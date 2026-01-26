@@ -1,0 +1,8 @@
+:HL["/Deck_Website/_next/static/chunks/d0988e8776c8bae6.css","style"]
+:HL["/Deck_Website/_next/static/chunks/c007f3f11680ac8f.css","style"]
+:HL["/Deck_Website/_next/static/chunks/e3c27af5eb19c916.css","style"]
+:HL["/Deck_Website/_next/static/media/01e4147cff8141ee-s.p.7787e134.woff2","font",{"crossOrigin":"","type":"font/woff2"}]
+:HL["/Deck_Website/_next/static/media/83afe278b6a6bb3c-s.p.3a6ba036.woff2","font",{"crossOrigin":"","type":"font/woff2"}]
+:HL["/Deck_Website/_next/static/media/8bd76523131fa0fc-s.p.eb17b6b9.woff2","font",{"crossOrigin":"","type":"font/woff2"}]
+:HL["/Deck_Website/_next/static/media/feb57b2dc8f29018-s.p.2539f70a.woff2","font",{"crossOrigin":"","type":"font/woff2"}]
+0:{"buildId":"6FyQIAEdVfk8UgC_yIP8S","tree":{"name":"","paramType":null,"paramKey":"","hasRuntimePrefetch":false,"slots":{"children":{"name":"features","paramType":null,"paramKey":"features","hasRuntimePrefetch":false,"slots":{"children":{"name":"__PAGE__","paramType":null,"paramKey":"__PAGE__","hasRuntimePrefetch":false,"slots":null,"isRootLayout":false}},"isRootLayout":false}},"isRootLayout":true},"staleTime":300}

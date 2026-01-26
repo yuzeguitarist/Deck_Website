@@ -1,0 +1,4 @@
+:HL["/Deck_Website/_next/static/chunks/d0988e8776c8bae6.css","style"]
+:HL["/Deck_Website/_next/static/chunks/c007f3f11680ac8f.css","style"]
+:HL["/Deck_Website/_next/static/chunks/e3c27af5eb19c916.css","style"]
+0:{"buildId":"6FyQIAEdVfk8UgC_yIP8S","tree":{"name":"","paramType":null,"paramKey":"","hasRuntimePrefetch":false,"slots":{"children":{"name":"/_not-found","paramType":null,"paramKey":"/_not-found","hasRuntimePrefetch":false,"slots":{"children":{"name":"__PAGE__","paramType":null,"paramKey":"__PAGE__","hasRuntimePrefetch":false,"slots":null,"isRootLayout":false}},"isRootLayout":false}},"isRootLayout":true},"staleTime":300}
