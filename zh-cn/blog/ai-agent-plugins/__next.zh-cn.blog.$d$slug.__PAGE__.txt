@@ -1,0 +1,382 @@
+1:"$Sreact.fragment"
+2:I[98407,["/_next/static/chunks/0326615652f30df1.js","/_next/static/chunks/31de6e89f09f52e0.js","/_next/static/chunks/e0d9687062e37c12.js","/_next/static/chunks/63d601ccd18bb55a.js","/_next/static/chunks/23f147fec4f52e6e.js"],"BlogPostPage"]
+7:I[97367,["/_next/static/chunks/ff1a16fafef87110.js","/_next/static/chunks/6153d1a363729c2c.js"],"OutletBoundary"]
+8:"$Sreact.suspense"
+3:T71a2,<hr>
+<h2 id="一个真实的例子">一个真实的例子</h2>
+<p>你在终端里复制了一段 JSON 响应，想把它格式化成可读的样子。打开 Deck，输入一句话：</p>
+<blockquote>
+<p>&quot;帮我把最近复制的那段 JSON 格式化一下。&quot;</p>
+</blockquote>
+<p>Deck 的 AI Agent 随即完成了这些事：</p>
+<ol>
+<li>搜索剪贴板历史，找到 30 秒前复制的 JSON</li>
+<li>发现没有现成的格式化插件，于是自己写了一个</li>
+<li>将插件存入 <code>~/.deck/scripts/json-formatter/</code></li>
+<li>执行插件，将 JSON 格式化为缩进整齐的格式</li>
+<li>结果写入剪贴板历史，等你使用</li>
+</ol>
+<p>这不是一个对话框套了层皮。Deck 的 AI 有自己的工具集、权限边界、执行循环，还能通过创建插件来扩展自身能力。</p>
+<hr>
+<h2 id="一-多-provider-抽象-连接一切大模型">一、多 Provider 抽象：连接一切大模型</h2>
+<p>大多数 AI 应用被锁定在单一供应商上。Deck 从第一天起就采用了多 Provider 架构，你可以自由切换 OpenAI、Anthropic、Ollama 本地模型，甚至通过 ChatGPT macOS 客户端免费使用。</p>
+<h3 id="provider-枚举">Provider 枚举</h3>
+<div class="code-block-wrapper"><button class="copy-btn" aria-label="Copy code"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg></button><div class="code-lang-label">swift</div><pre><code class="hljs language-swift"><span class="hljs-keyword">enum</span> <span class="hljs-title class_">AIProviderType</span> {
+    <span class="hljs-keyword">case</span> chatgpt     <span class="hljs-comment">// ChatGPT (Web/App)</span>
+    <span class="hljs-keyword">case</span> openaiAPI   <span class="hljs-comment">// OpenAI API (direct)</span>
+    <span class="hljs-keyword">case</span> anthropic   <span class="hljs-comment">// Anthropic Claude</span>
+    <span class="hljs-keyword">case</span> ollama      <span class="hljs-comment">// Ollama local models</span>
+}</code></pre></div><h3 id="统一协议">统一协议</h3>
+<p>所有 Provider 遵循同一个协议 <code>AIProviderProtocol</code>，暴露统一接口：</p>
+<ul>
+<li><code>sendMessage(messages:tools:stream:)</code> — 发送消息，支持流式输出和工具调用定义</li>
+<li><code>isConfigured</code> — 是否已完成配置</li>
+<li><code>currentModel</code> — 当前模型标识</li>
+<li><code>cancelCurrentRequest()</code> — 取消进行中的请求</li>
+</ul>
+<p><code>AIService</code> 作为编排中心，维护一个 <code>providerCache</code> 避免重复初始化，并通过 switch 路由到正确的 Provider：</p>
+<div class="code-block-wrapper"><button class="copy-btn" aria-label="Copy code"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg></button><div class="code-lang-label">swift</div><pre><code class="hljs language-swift"><span class="hljs-keyword">func</span> <span class="hljs-title function_">configuredProvider</span>() -&gt; <span class="hljs-type">AIProviderProtocol</span> {
+    <span class="hljs-keyword">switch</span> config.providerType {
+    <span class="hljs-keyword">case</span> .chatgpt:   <span class="hljs-keyword">return</span> <span class="hljs-type">ChatGPTProvider</span>.shared
+    <span class="hljs-keyword">case</span> .openaiAPI: <span class="hljs-keyword">return</span> <span class="hljs-type">OpenAIAPIProvider</span>.shared
+    <span class="hljs-keyword">case</span> .anthropic: <span class="hljs-keyword">return</span> <span class="hljs-type">AnthropicProvider</span>.shared
+    <span class="hljs-keyword">case</span> .ollama:    <span class="hljs-keyword">return</span> <span class="hljs-type">OllamaProvider</span>.shared
+    }
+}</code></pre></div><p>整个 Agent 系统（工具调用、插件执行、Smart Rule）对底层模型完全无感。换一个 Provider，一切照常工作。</p>
+<hr>
+<h2 id="二-12-个工具-ai-的能力边界">二、12 个工具：AI 的能力边界</h2>
+<p>一个 Agent 的能力由它可以使用的工具决定。Deck 为 AI 定义了 12 个工具，覆盖了剪贴板管理的完整生命周期：</p>
+<div class="table-wrapper"><table>
+<thead>
+<tr>
+<th>#</th>
+<th>工具 / Tool</th>
+<th>功能 / Function</th>
+<th align="center">需授权 / Auth</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>1</td>
+<td><code>search_clipboard</code></td>
+<td>搜索剪贴板历史（auto/exact/fuzzy/regex/mixed/semantic 六种模式）/ Search clipboard history (6 modes)</td>
+<td align="center">-</td>
+</tr>
+<tr>
+<td>2</td>
+<td><code>write_clipboard</code></td>
+<td>写入新记录到剪贴板历史 / Write new entry to clipboard history</td>
+<td align="center">[Y]</td>
+</tr>
+<tr>
+<td>3</td>
+<td><code>delete_clipboard</code></td>
+<td>按 ID 删除记录 / Delete entry by ID</td>
+<td align="center">[Y]</td>
+</tr>
+<tr>
+<td>4</td>
+<td><code>list_script_plugins</code></td>
+<td>列出所有插件元数据 / List all plugin manifests</td>
+<td align="center">-</td>
+</tr>
+<tr>
+<td>5</td>
+<td><code>read_script_plugin</code></td>
+<td>读取插件源码 / Read plugin source code</td>
+<td align="center">-</td>
+</tr>
+<tr>
+<td>6</td>
+<td><code>read_skill_detail</code></td>
+<td>读取技能描述 / Read skill description</td>
+<td align="center">-</td>
+</tr>
+<tr>
+<td>7</td>
+<td><code>record_memory</code></td>
+<td>持久化长期记忆（≤30 字符，可设 TTL）/ Persist long-term memory (≤30 chars, optional TTL)</td>
+<td align="center">-</td>
+</tr>
+<tr>
+<td>8</td>
+<td><code>delete_memory</code></td>
+<td>删除已保存的记忆 / Delete saved memory</td>
+<td align="center">-</td>
+</tr>
+<tr>
+<td>9</td>
+<td><code>run_script_transform</code></td>
+<td>执行插件 <code>transform(input)</code> / Run plugin&#39;s <code>transform(input)</code></td>
+<td align="center">[!]</td>
+</tr>
+<tr>
+<td>10</td>
+<td><code>generate_script_plugin</code></td>
+<td>AI 生成新插件 / AI generates a new plugin</td>
+<td align="center">[Y]</td>
+</tr>
+<tr>
+<td>11</td>
+<td><code>modify_script_plugin</code></td>
+<td>增量修改现有插件 / Incrementally patch an existing plugin</td>
+<td align="center">[Y]</td>
+</tr>
+<tr>
+<td>12</td>
+<td><code>delete_script_plugin</code></td>
+<td>删除插件 / Delete a plugin</td>
+<td align="center">[Y]</td>
+</tr>
+</tbody></table></div>
+<h3 id="授权机制">授权机制</h3>
+<p>注意表中 [Y] 标记的工具：所有写入、删除、创建类操作都需要用户明确授权。授权逻辑由 UI 层注入，缺失时默认拒绝。AI 能做很多事，但关键操作永远需要你点头。</p>
+<p>另一个细节：工具结果存在截断机制（<code>maxToolSnippetCharacters = 2500</code>），防止超长输出耗尽 context window。</p>
+<hr>
+<h2 id="三-agent-循环-思考-执行-观察">三、Agent 循环：思考、执行、观察</h2>
+<p>Deck 的 AI 不是一问一答的聊天机器人，而是一个循环执行的 Agent。System Prompt 中明确定义了行为模式：</p>
+<div class="code-block-wrapper"><button class="copy-btn" aria-label="Copy code"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg></button><pre><code class="hljs">&lt;agent_loop&gt;
+You are a capable agent. Act, don&#x27;t just describe.
+
+For each request, follow this cycle:
+1. Understand the user&#x27;s intent.
+2. Plan internally...
+3. Execute: call the necessary tool(s)...
+4. Observe and verify each tool result before proceeding.
+5. Respond to the user with the final result.
+
+When issuing a tool call, output ONLY the tool call — no surrounding narration.
+&lt;/agent_loop&gt;</code></pre></div><p><strong>Act, don&#39;t just describe</strong> 是这段指令的核心。当你说&quot;帮我搜索最近复制的链接&quot;时，AI 不会回复&quot;你可以使用搜索功能来查找链接&quot;。它直接调用 <code>search_clipboard</code>，拿到结果，告诉你找到了什么。</p>
+<h3 id="流式执行">流式执行</h3>
+<p>整个过程通过 <code>AsyncThrowingStream&lt;AIStreamEvent, Error&gt;</code> 实现流式处理，事件类型包括：</p>
+<ul>
+<li><code>textDelta</code> — 文本片段</li>
+<li><code>toolCall</code> — 工具调用请求</li>
+<li><code>done</code> — 完成</li>
+<li><code>error</code> — 错误</li>
+</ul>
+<p>工具调用的完整流程：</p>
+<div class="blog-mermaid" data-mermaid="sequenceDiagram%0A%20%20%20%20participant%20U%20as%20%E7%94%A8%E6%88%B7%20%2F%20User%0A%20%20%20%20participant%20AI%20as%20AIService%0A%20%20%20%20participant%20P%20as%20Provider%0A%20%20%20%20participant%20T%20as%20AIToolService%0A%0A%20%20%20%20U-%3E%3EAI%3A%20%22%E6%A0%BC%E5%BC%8F%E5%8C%96%E6%9C%80%E8%BF%91%E7%9A%84%20JSON%22%0A%20%20%20%20AI-%3E%3EP%3A%20sendMessage(messages%2C%20tools)%0A%20%20%20%20P--%3E%3EAI%3A%20toolCall(search_clipboard)%0A%20%20%20%20AI-%3E%3ET%3A%20execute(search_clipboard)%0A%20%20%20%20T--%3E%3EAI%3A%20%5B%E6%89%BE%E5%88%B0%20JSON%20%E8%AE%B0%E5%BD%95%5D%0A%20%20%20%20AI-%3E%3EP%3A%20%E7%BB%A7%E7%BB%AD%E7%94%9F%E6%88%90%EF%BC%88%E5%90%AB%E5%B7%A5%E5%85%B7%E7%BB%93%E6%9E%9C%EF%BC%89%0A%20%20%20%20P--%3E%3EAI%3A%20toolCall(run_script_transform)%0A%20%20%20%20AI-%3E%3ET%3A%20execute(run_script_transform)%0A%20%20%20%20T--%3E%3EAI%3A%20%5B%E6%A0%BC%E5%BC%8F%E5%8C%96%E7%BB%93%E6%9E%9C%5D%0A%20%20%20%20AI-%3E%3EP%3A%20%E7%BB%A7%E7%BB%AD%E7%94%9F%E6%88%90%0A%20%20%20%20P--%3E%3EAI%3A%20textDelta(%22%E5%B7%B2%E6%A0%BC%E5%BC%8F%E5%8C%96%E5%AE%8C%E6%88%90...%22)%0A%20%20%20%20AI--%3E%3EU%3A%20%E6%9C%80%E7%BB%88%E5%93%8D%E5%BA%94%20%2B%20%E6%A0%BC%E5%BC%8F%E5%8C%96%E7%BB%93%E6%9E%9C"><pre class="mermaid-fallback"><code>sequenceDiagram
+    participant U as 用户 / User
+    participant AI as AIService
+    participant P as Provider
+    participant T as AIToolService
+
+    U->>AI: "格式化最近的 JSON"
+    AI->>P: sendMessage(messages, tools)
+    P-->>AI: toolCall(search_clipboard)
+    AI->>T: execute(search_clipboard)
+    T-->>AI: [找到 JSON 记录]
+    AI->>P: 继续生成（含工具结果）
+    P-->>AI: toolCall(run_script_transform)
+    AI->>T: execute(run_script_transform)
+    T-->>AI: [格式化结果]
+    AI->>P: 继续生成
+    P-->>AI: textDelta("已格式化完成...")
+    AI-->>U: 最终响应 + 格式化结果</code></pre></div><p>每次工具调用的结果以 <code>AIMessage.tool(toolCallId:text:)</code> 追加到消息历史，Provider 基于这些结果生成下一步响应。Agent 循环可以连续调用多个工具，直到完成任务。</p>
+<hr>
+<h2 id="四-javascriptcore-沙箱-安全的插件执行环境">四、JavaScriptCore 沙箱：安全的插件执行环境</h2>
+<p>插件系统是 Deck 的核心特性之一。每个插件本质上是一个 JavaScript 文件，运行在 JavaScriptCore 沙箱中。</p>
+<h3 id="插件结构">插件结构</h3>
+<div class="code-block-wrapper"><button class="copy-btn" aria-label="Copy code"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg></button><pre><code class="hljs">~/.deck/scripts/
+└── my-plugin/
+    ├── manifest.json    # 元数据 / Metadata
+    └── main.js          # 必须导出 transform(input) / Must export transform(input)</code></pre></div><p><code>plugin_id</code> 命名遵循 <code>^[a-z0-9._-]{1,64}$</code>，manifest 最大 64KB，脚本最大 1MB。</p>
+<p>一个 AI 生成的 JSON 格式化插件长这样：</p>
+<div class="code-block-wrapper"><button class="copy-btn" aria-label="Copy code"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg></button><div class="code-lang-label">javascript</div><pre><code class="hljs language-javascript"><span class="hljs-comment">// main.js</span>
+<span class="hljs-keyword">function</span> <span class="hljs-title function_">transform</span>(<span class="hljs-params">input</span>) {
+    <span class="hljs-keyword">try</span> {
+        <span class="hljs-keyword">var</span> obj = <span class="hljs-title class_">JSON</span>.<span class="hljs-title function_">parse</span>(input);
+        <span class="hljs-keyword">return</span> <span class="hljs-title class_">JSON</span>.<span class="hljs-title function_">stringify</span>(obj, <span class="hljs-literal">null</span>, <span class="hljs-number">2</span>);
+    } <span class="hljs-keyword">catch</span> (e) {
+        <span class="hljs-keyword">return</span> <span class="hljs-string">&quot;Invalid JSON: &quot;</span> + e.<span class="hljs-property">message</span>;
+    }
+}</code></pre></div><h3 id="沙箱安全约束">沙箱安全约束</h3>
+<p>Deck 对插件的运行环境施加了严格限制：</p>
+<div class="table-wrapper"><table>
+<thead>
+<tr>
+<th>约束 / Constraint</th>
+<th align="center">状态 / Status</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>文件系统访问 / File system access</td>
+<td align="center">[N] 禁止 / Blocked</td>
+</tr>
+<tr>
+<td>Shell 执行 / Shell execution</td>
+<td align="center">[N] 禁止 / Blocked</td>
+</tr>
+<tr>
+<td><code>eval</code> / <code>Function</code> 构造 / <code>eval</code> / <code>Function</code> constructor</td>
+<td align="center">[N] 禁止 / Blocked</td>
+</tr>
+<tr>
+<td>网络访问 / Network access</td>
+<td align="center">[N] 默认禁止（需 manifest 声明 + 用户确认）/ Blocked by default (requires manifest declaration + user confirmation)</td>
+</tr>
+<tr>
+<td>输入/输出大小 / I/O size limit</td>
+<td align="center">[Y] 各 100KB / 100KB each</td>
+</tr>
+<tr>
+<td>执行时限 / Execution timeout</td>
+<td align="center">[Y] 5 秒 / 5 seconds</td>
+</tr>
+<tr>
+<td>中断检查 / Interrupt checking</td>
+<td align="center">[Y] <code>__deckCheckInterrupt()</code></td>
+</tr>
+</tbody></table></div>
+<h3 id="5-秒时限的实现">5 秒时限的实现</h3>
+<p>JavaScriptCore 本身不提供公共的执行时限 API，Deck 通过私有 API 实现了这一功能：</p>
+<div class="code-block-wrapper"><button class="copy-btn" aria-label="Copy code"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg></button><div class="code-lang-label">swift</div><pre><code class="hljs language-swift"><span class="hljs-keyword">static</span> <span class="hljs-keyword">let</span> scriptExecutionTimeout: <span class="hljs-type">TimeInterval</span> <span class="hljs-operator">=</span> <span class="hljs-number">5.0</span></code></pre></div><p>具体做法是通过 <code>dlopen</code> 加载 JavaScriptCore 框架，用 <code>dlsym</code> 获取 <code>JSGlobalContextGetGroup</code> 和 <code>JSContextGroupSetExecutionTimeLimit</code> 两个符号，封装为 <code>JSExecutionTimeLimiter</code> 类。在创建 JS 执行上下文时调用 <code>setLimit(group, timeLimit, callback, nil)</code>，确保任何脚本最多运行 5 秒。</p>
+<p>需要网络权限的插件必须在 manifest 中声明 <code>requiresNetwork: true</code>，运行时使用独立的 ephemeral <code>URLSession</code>，不会泄露主应用的 cookies 或缓存。</p>
+<hr>
+<h2 id="五-ai-创建插件-自我扩展的系统">五、AI 创建插件：自我扩展的系统</h2>
+<p>这是 Deck Agent 系统最有趣的部分。AI 不仅可以<em>使用</em>插件，还可以<em>创建</em>和<em>修改</em>插件。</p>
+<h3 id="生成新插件">生成新插件</h3>
+<p><code>generate_script_plugin</code>（工具 10）让 AI 从零创建插件：</p>
+<ol>
+<li><code>prepareDraft(parameters:)</code> — 校验 manifest 和源码</li>
+<li>安全校验</li>
+</ol>
+<ul>
+<li>必须包含 <code>transform(input)</code> 函数</li>
+<li><code>plugin_id</code> 符合命名规范</li>
+</ul>
+<ol start="3">
+<li>生成 <code>AIPluginInstallDraft</code> / Generate <code>AIPluginInstallDraft</code></li>
+<li><code>install(_ draft)</code> — 写入磁盘</li>
+</ol>
+<h3 id="增量修改">增量修改</h3>
+<p><code>modify_script_plugin</code>（工具 11）使用 <code>apply_patch</code> 风格的增量修改，AI 不需要重写整个文件，只需描述变更部分：</p>
+<ul>
+<li>支持多处修改</li>
+</ul>
+<h3 id="插件的积累效应">插件的积累效应</h3>
+<p>回到开头的例子：</p>
+<ol>
+<li>用户说：&quot;帮我格式化 JSON&quot;</li>
+<li>AI 搜索历史，找到 JSON</li>
+<li>AI 检查现有插件，没有 JSON 格式化器</li>
+<li>AI 编写一个，通过安全校验后安装</li>
+<li>AI 立即用新插件格式化 JSON</li>
+<li>下次再需要格式化 JSON？插件已经在那里了</li>
+</ol>
+<p>AI 每解决一个新问题，就会留下一个可复用的插件。随着使用时间增长，积累的插件越来越多，系统能做的事也越来越多。</p>
+<hr>
+<h2 id="六-smart-rule-引擎-当条件遇上-ai">六、Smart Rule 引擎：当条件遇上 AI</h2>
+<p>到目前为止都是&quot;用户主动触发&quot;的场景。Smart Rule 引擎让 AI 变成了一个后台自动化系统，<strong>在你复制的那一刻，规则就开始运转</strong>。</p>
+<h3 id="条件类型">条件类型</h3>
+<div class="code-block-wrapper"><button class="copy-btn" aria-label="Copy code"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg></button><div class="code-lang-label">swift</div><pre><code class="hljs language-swift"><span class="hljs-keyword">enum</span> <span class="hljs-title class_">RuleCondition</span> {
+    <span class="hljs-keyword">case</span> contentContains(<span class="hljs-type">String</span>)           <span class="hljs-comment">// 内容包含 / Content contains</span>
+    <span class="hljs-keyword">case</span> contentMatches(<span class="hljs-type">String</span>)            <span class="hljs-comment">// 正则匹配 / Regex match</span>
+    <span class="hljs-keyword">case</span> contentType(<span class="hljs-type">String</span>)              <span class="hljs-comment">// 类型匹配 / Type match (text/image/file/url/code/color)</span>
+    <span class="hljs-keyword">case</span> sourceApp(<span class="hljs-type">String</span>)                <span class="hljs-comment">// 来源应用 / Source application</span>
+    <span class="hljs-keyword">case</span> contentLength(<span class="hljs-type">CompareOp</span>, <span class="hljs-type">Int</span>)    <span class="hljs-comment">// 长度比较 / Length comparison</span>
+    <span class="hljs-keyword">case</span> hasCustomTitle                   <span class="hljs-comment">// 有自定义标题 / Has custom title</span>
+}</code></pre></div><p>条件可以用 <code>.all</code>（AND）或 <code>.any</code>（OR）组合。</p>
+<h3 id="动作类型">动作类型</h3>
+<div class="code-block-wrapper"><button class="copy-btn" aria-label="Copy code"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg></button><div class="code-lang-label">swift</div><pre><code class="hljs language-swift"><span class="hljs-keyword">enum</span> <span class="hljs-title class_">RuleAction</span> {
+    <span class="hljs-keyword">case</span> addTag(<span class="hljs-type">String</span>)          <span class="hljs-comment">// 添加标签 / Add tag</span>
+    <span class="hljs-keyword">case</span> markSensitive           <span class="hljs-comment">// 标记敏感 / Mark as sensitive</span>
+    <span class="hljs-keyword">case</span> autoDelete(<span class="hljs-type">Int</span>)         <span class="hljs-comment">// N 分钟后自动删除 / Auto-delete after N minutes</span>
+    <span class="hljs-keyword">case</span> transform(<span class="hljs-type">String</span>)       <span class="hljs-comment">// 文本转换 / Text transform (built-in or plugin)</span>
+    <span class="hljs-keyword">case</span> aiPrompt(<span class="hljs-type">String</span>)        <span class="hljs-comment">// 触发 AI 处理 / Trigger AI processing</span>
+    <span class="hljs-keyword">case</span> ignore                  <span class="hljs-comment">// 不保存 / Don&#x27;t save to history</span>
+}</code></pre></div><h3 id="执行流程">执行流程</h3>
+<div class="blog-mermaid" data-mermaid="flowchart%20TD%0A%20%20%20%20A%5BClipboardService%20%E6%A3%80%E6%B5%8B%E5%88%B0%E5%A4%8D%E5%88%B6%3Cbr%2F%3ECopy%20detected%5D%20--%3E%20B%5BprocessParsedItemWithRules%5D%0A%20%20%20%20B%20--%3E%20C%5BSmartRuleService.processItem%5D%0A%20%20%20%20C%20--%3E%20D%7B%E6%9D%A1%E4%BB%B6%E6%B1%82%E5%80%BC%3Cbr%2F%3EEvaluate%20conditions%7D%0A%20%20%20%20D%20--%3E%7C%E5%91%BD%E4%B8%AD%20ignore%7C%20E%5B%E4%B8%A2%E5%BC%83%EF%BC%8C%E4%B8%8D%E5%85%A5%E5%BA%93%3Cbr%2F%3EDiscard%5D%0A%20%20%20%20D%20--%3E%7C%E5%91%BD%E4%B8%AD%20transform%7C%20F%5B%E5%85%88%E8%BD%AC%E6%8D%A2%E5%86%8D%E5%85%A5%E5%BA%93%3Cbr%2F%3ETransform%20then%20save%5D%0A%20%20%20%20D%20--%3E%7C%E5%85%B6%E4%BB%96%E5%8A%A8%E4%BD%9C%7C%20G%5B%E5%85%A5%E5%BA%93%3Cbr%2F%3ESave%20to%20store%5D%0A%20%20%20%20F%20--%3E%20G%0A%20%20%20%20G%20--%3E%20H%5BapplyActions%5D%0A%20%20%20%20H%20--%3E%20I%5BaddTag%20%2F%20markSensitive%20%2F%20autoDelete%5D%0A%20%20%20%20H%20--%3E%20J%5BaiPrompt%20%E2%86%92%20AI%20%E8%87%AA%E5%8A%A8%E5%8C%96%E5%A4%84%E7%90%86%3Cbr%2F%3EAI%20automation%5D"><pre class="mermaid-fallback"><code>flowchart TD
+    A[ClipboardService 检测到复制<br/>Copy detected] --> B[processParsedItemWithRules]
+    B --> C[SmartRuleService.processItem]
+    C --> D{条件求值<br/>Evaluate conditions}
+    D -->|命中 ignore| E[丢弃，不入库<br/>Discard]
+    D -->|命中 transform| F[先转换再入库<br/>Transform then save]
+    D -->|其他动作| G[入库<br/>Save to store]
+    F --> G
+    G --> H[applyActions]
+    H --> I[addTag / markSensitive / autoDelete]
+    H --> J[aiPrompt → AI 自动化处理<br/>AI automation]</code></pre></div><h3 id="ai-动作链">AI 动作链</h3>
+<p>当规则触发 <code>aiPrompt(prompt)</code> 时，AI 自动介入处理：</p>
+<ol>
+<li><p>构造 <code>SmartRuleSourceSnapshot</code>，包含触发 item 的完整上下文（ID、类型、来源应用、内容、时间戳）</p>
+</li>
+<li><p>调用 <code>AIService.shared.runSmartRuleAutomation(prompt:source:)</code></p>
+</li>
+<li><p>在 <code>smartRule(source:)</code> 上下文中执行，自动授权（<code>autoApprove: true</code>）</p>
+</li>
+<li><p>工具作用域限定为当前触发的 item</p>
+</li>
+<li><p>AI 使用受限工具集（工具 1-7），不能在 Smart Rule 上下文中创建或修改插件</p>
+</li>
+</ol>
+<h3 id="实际场景">实际场景</h3>
+<ul>
+<li><strong>Slack 链接提取 / Slack link extraction</strong>：来源是 Slack + 内容包含 URL → AI 自动提取链接摘要并打标签 / Source is Slack + content contains URL → AI extracts link summary and adds tags</li>
+<li><strong>代码格式化 / Code formatting</strong>：内容类型是 code + 长度 &gt; 100 字符 → 自动用插件格式化 / Content type is code + length &gt; 100 chars → auto-format via plugin</li>
+<li><strong>密码保护 / Password protection</strong>：来源是密码管理器 → 标记敏感 + 5 分钟后自动删除 / Source is a password manager → mark sensitive + auto-delete after 5 minutes</li>
+</ul>
+<hr>
+<h2 id="系统架构总览">系统架构总览</h2>
+<div class="blog-mermaid" data-mermaid="graph%20TB%0A%20%20%20%20subgraph%20Orchestration%5B%22%E7%BC%96%E6%8E%92%E5%B1%82%20%2F%20Orchestration%22%5D%0A%20%20%20%20%20%20%20%20AIS%5BAIService%3Cbr%2F%3E%E7%BC%96%E6%8E%92%E4%B8%AD%E5%BF%83%20%2F%20Orchestrator%5D%0A%20%20%20%20end%0A%0A%20%20%20%20subgraph%20Providers%5B%22%E6%A8%A1%E5%9E%8B%E5%B1%82%20%2F%20Model%20Layer%22%5D%0A%20%20%20%20%20%20%20%20PP%5BAIProviderProtocol%5D%0A%20%20%20%20%20%20%20%20PP%20--%3E%20CGP%5BChatGPTProvider%5D%0A%20%20%20%20%20%20%20%20PP%20--%3E%20OAP%5BOpenAIAPIProvider%5D%0A%20%20%20%20%20%20%20%20PP%20--%3E%20ANP%5BAnthropicProvider%5D%0A%20%20%20%20%20%20%20%20PP%20--%3E%20OLP%5BOllamaProvider%5D%0A%20%20%20%20end%0A%0A%20%20%20%20subgraph%20Tools%5B%22%E5%B7%A5%E5%85%B7%E5%B1%82%20%2F%20Tool%20Layer%22%5D%0A%20%20%20%20%20%20%20%20ATS%5BAIToolService%3Cbr%2F%3E12%20%E4%B8%AA%E5%B7%A5%E5%85%B7%20%2F%2012%20Tools%5D%0A%20%20%20%20end%0A%0A%20%20%20%20subgraph%20Plugins%5B%22%E6%8F%92%E4%BB%B6%E5%B1%82%20%2F%20Plugin%20Layer%22%5D%0A%20%20%20%20%20%20%20%20SPS%5BScriptPluginService%3Cbr%2F%3EJS%20%E6%B2%99%E7%AE%B1%20%2F%20JS%20Sandbox%5D%0A%20%20%20%20%20%20%20%20APGS%5BAIPluginGeneratorService%3Cbr%2F%3E%E7%94%9F%E6%88%90%C2%B7%E4%BF%AE%E6%94%B9%C2%B7%E5%88%A0%E9%99%A4%20%2F%20Generate%C2%B7Patch%C2%B7Delete%5D%0A%20%20%20%20end%0A%0A%20%20%20%20subgraph%20Automation%5B%22%E8%87%AA%E5%8A%A8%E5%8C%96%E5%B1%82%20%2F%20Automation%22%5D%0A%20%20%20%20%20%20%20%20SRS%5BSmartRuleService%3Cbr%2F%3E%E6%9D%A1%E4%BB%B6%E5%8C%B9%E9%85%8D%20%2B%20%E5%8A%A8%E4%BD%9C%20%2F%20Conditions%20%2B%20Actions%5D%0A%20%20%20%20end%0A%0A%20%20%20%20subgraph%20Storage%5B%22%E6%95%B0%E6%8D%AE%E5%B1%82%20%2F%20Data%20Layer%22%5D%0A%20%20%20%20%20%20%20%20DDS%5BDeckDataStore%3Cbr%2F%3E%E5%AD%98%E5%82%A8%E4%B8%8E%E8%A7%84%E5%88%99%E5%85%A5%E5%8F%A3%20%2F%20Storage%20%26%20Rule%20Entry%5D%0A%20%20%20%20end%0A%0A%20%20%20%20AIS%20%3C--%3E%20PP%0A%20%20%20%20AIS%20%3C--%3E%20ATS%0A%20%20%20%20ATS%20--%3E%20SPS%0A%20%20%20%20ATS%20--%3E%20APGS%0A%20%20%20%20APGS%20--%3E%20SPS%0A%20%20%20%20SRS%20--%3E%20AIS%0A%20%20%20%20DDS%20--%3E%20SRS%0A%20%20%20%20ATS%20--%3E%20DDS"><pre class="mermaid-fallback"><code>graph TB
+    subgraph Orchestration["编排层 / Orchestration"]
+        AIS[AIService<br/>编排中心 / Orchestrator]
+    end
+
+    subgraph Providers["模型层 / Model Layer"]
+        PP[AIProviderProtocol]
+        PP --> CGP[ChatGPTProvider]
+        PP --> OAP[OpenAIAPIProvider]
+        PP --> ANP[AnthropicProvider]
+        PP --> OLP[OllamaProvider]
+    end
+
+    subgraph Tools["工具层 / Tool Layer"]
+        ATS[AIToolService<br/>12 个工具 / 12 Tools]
+    end
+
+    subgraph Plugins["插件层 / Plugin Layer"]
+        SPS[ScriptPluginService<br/>JS 沙箱 / JS Sandbox]
+        APGS[AIPluginGeneratorService<br/>生成·修改·删除 / Generate·Patch·Delete]
+    end
+
+    subgraph Automation["自动化层 / Automation"]
+        SRS[SmartRuleService<br/>条件匹配 + 动作 / Conditions + Actions]
+    end
+
+    subgraph Storage["数据层 / Data Layer"]
+        DDS[DeckDataStore<br/>存储与规则入口 / Storage & Rule Entry]
+    end
+
+    AIS <--> PP
+    AIS <--> ATS
+    ATS --> SPS
+    ATS --> APGS
+    APGS --> SPS
+    SRS --> AIS
+    DDS --> SRS
+    ATS --> DDS</code></pre></div><hr>
+<h2 id="能力与约束-怎么划线">能力与约束：怎么划线</h2>
+<p>Deck 的 Agent 设计始终在平衡一件事：给 AI 足够的能力去解决问题，同时确保它不会做出用户不想要的事。</p>
+<p><strong>AI 能做什么：</strong></p>
+<ul>
+<li>12 个工具覆盖完整的剪贴板操作生命周期</li>
+<li>自己编写和安装插件来扩展能力</li>
+<li>流式 Agent 循环支持多步推理和工具链式调用</li>
+<li>通过 Smart Rule 在后台自动运行</li>
+</ul>
+<p><strong>什么被限制了：</strong></p>
+<ul>
+<li>写入和删除操作需要用户授权</li>
+<li>插件在严格的沙箱中执行，无文件系统、无 Shell、5 秒超时</li>
+<li>Smart Rule 上下文中 AI 不能创建新插件，只能用现有工具</li>
+<li>工具结果截断防止 context 爆炸</li>
+<li>网络权限需要显式声明和用户确认</li>
+</ul>
+<p>这些限制不是因为不信任 AI。实际情况是：AI 可以自由创建插件，但需要你点确认；它可以在后台自动运行，但只有读取和搜索权限，没法自己装新插件。该放权的地方放权，该收紧的地方收紧。</p>
+<p>这就是 Deck 的 AI Agent 系统：一套让 AI 真正参与产品工作流的架构，而不只是在旁边聊天。</p>
+0:{"buildId":"uj7zkHqCugl7M3KbKSjms","rsc":["$","$1","c",{"children":[[["$","script",null,{"type":"application/ld+json","dangerouslySetInnerHTML":{"__html":"{\"@context\":\"https://schema.org\",\"@type\":\"BlogPosting\",\"headline\":\"AI Agent 与脚本插件：Deck 的自我进化系统\",\"description\":\"Deck 如何将 AI 深度融入剪贴板管理——多 Provider 抽象、12 个工具、Agent 循环、JavaScriptCore 沙箱插件和 Smart Rule 引擎。\",\"url\":\"https://deckclip.app/blog/ai-agent-plugins\",\"datePublished\":\"2026-03-06T00:00:00+00:00\",\"dateModified\":\"2026-03-06T00:00:00+00:00\",\"author\":{\"@type\":\"Organization\",\"name\":\"Deck\",\"url\":\"https://deckclip.app\"},\"publisher\":{\"@type\":\"Organization\",\"name\":\"Deck\",\"url\":\"https://deckclip.app\",\"logo\":{\"@type\":\"ImageObject\",\"url\":\"https://deckclip.app/Deck.jpeg\"}},\"mainEntityOfPage\":{\"@type\":\"WebPage\",\"@id\":\"https://deckclip.app/blog/ai-agent-plugins\"},\"image\":\"https://deckclip.app/Deck.jpeg\",\"keywords\":\"AI, Plugins, Architecture\",\"timeRequired\":\"PT6M\",\"inLanguage\":\"en\",\"isAccessibleForFree\":true}"}}],["$","script",null,{"type":"application/ld+json","dangerouslySetInnerHTML":{"__html":"{\"@context\":\"https://schema.org\",\"@type\":\"BreadcrumbList\",\"itemListElement\":[{\"@type\":\"ListItem\",\"position\":1,\"name\":\"首页\",\"item\":\"https://deckclip.app/zh-cn\"},{\"@type\":\"ListItem\",\"position\":2,\"name\":\"博客\",\"item\":\"https://deckclip.app/zh-cn/blog\"},{\"@type\":\"ListItem\",\"position\":3,\"name\":\"AI Agent 与脚本插件：Deck 的自我进化系统\",\"item\":\"https://deckclip.app/zh-cn/blog/ai-agent-plugins\"}]}"}}],["$","$L2",null,{"post":{"slug":"ai-agent-plugins","title":"AI Agent 与脚本插件：Deck 的自我进化系统","date":"2026-03-06","summary":"Deck 如何将 AI 深度融入剪贴板管理——多 Provider 抽象、12 个工具、Agent 循环、JavaScriptCore 沙箱插件和 Smart Rule 引擎。","tags":["AI","Plugins","Architecture"],"html":"$3","readingTime":6},"toc":[{"depth":2,"id":"一个真实的例子","text":"一个真实的例子"},{"depth":2,"id":"一-多-provider-抽象-连接一切大模型","text":"一、多 Provider 抽象：连接一切大模型"},{"depth":3,"id":"provider-枚举","text":"Provider 枚举"},{"depth":3,"id":"统一协议","text":"统一协议"},{"depth":2,"id":"二-12-个工具-ai-的能力边界","text":"二、12 个工具：AI 的能力边界"},{"depth":3,"id":"授权机制","text":"授权机制"},{"depth":2,"id":"三-agent-循环-思考-执行-观察","text":"三、Agent 循环：思考、执行、观察"},{"depth":3,"id":"流式执行","text":"流式执行"},{"depth":2,"id":"四-javascriptcore-沙箱-安全的插件执行环境","text":"四、JavaScriptCore 沙箱：安全的插件执行环境"},{"depth":3,"id":"插件结构","text":"插件结构"},{"depth":3,"id":"沙箱安全约束","text":"沙箱安全约束"},{"depth":3,"id":"5-秒时限的实现","text":"5 秒时限的实现"},{"depth":2,"id":"五-ai-创建插件-自我扩展的系统","text":"五、AI 创建插件：自我扩展的系统"},{"depth":3,"id":"生成新插件","text":"生成新插件"},{"depth":3,"id":"增量修改","text":"增量修改"},{"depth":3,"id":"插件的积累效应","text":"插件的积累效应"},{"depth":2,"id":"六-smart-rule-引擎-当条件遇上-ai","text":"六、Smart Rule 引擎：当条件遇上 AI"},{"depth":3,"id":"条件类型","text":"条件类型"},{"depth":3,"id":"动作类型","text":"动作类型"},{"depth":3,"id":"执行流程","text":"执行流程"},{"depth":3,"id":"ai-动作链","text":"AI 动作链"},{"depth":3,"id":"实际场景","text":"实际场景"},{"depth":2,"id":"系统架构总览","text":"系统架构总览"},{"depth":2,"id":"能力与约束-怎么划线","text":"能力与约束：怎么划线"}]}]],["$L4","$L5"],"$L6"]}],"loading":null,"isPartial":false}
+4:["$","script","script-0",{"src":"/_next/static/chunks/63d601ccd18bb55a.js","async":true}]
+5:["$","script","script-1",{"src":"/_next/static/chunks/23f147fec4f52e6e.js","async":true}]
+6:["$","$L7",null,{"children":["$","$8",null,{"name":"Next.MetadataOutlet","children":"$@9"}]}]
+9:null

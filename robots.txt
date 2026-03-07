@@ -1,0 +1,38 @@
+User-Agent: *
+Allow: /
+
+User-Agent: Googlebot
+Allow: /
+
+User-Agent: Google-Extended
+Allow: /
+
+User-Agent: Bingbot
+Allow: /
+
+User-Agent: Applebot
+Allow: /
+
+User-Agent: GPTBot
+Allow: /
+
+User-Agent: OAI-SearchBot
+Allow: /
+
+User-Agent: ChatGPT-User
+Allow: /
+
+User-Agent: PerplexityBot
+Allow: /
+
+User-Agent: Perplexity-User
+Allow: /
+
+User-Agent: ClaudeBot
+Allow: /
+
+Host: deckclip.app
+Sitemap: https://deckclip.app/sitemap-index.xml
+Sitemap: https://deckclip.app/sitemap.xml
+Sitemap: https://deckclip.app/sitemap-images.xml
+Sitemap: https://deckclip.app/sitemap-ai.xml

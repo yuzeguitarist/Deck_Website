@@ -1,0 +1,279 @@
+1:"$Sreact.fragment"
+2:I[98407,["/_next/static/chunks/0326615652f30df1.js","/_next/static/chunks/31de6e89f09f52e0.js","/_next/static/chunks/e0d9687062e37c12.js","/_next/static/chunks/63d601ccd18bb55a.js","/_next/static/chunks/23f147fec4f52e6e.js"],"BlogPostPage"]
+7:I[97367,["/_next/static/chunks/ff1a16fafef87110.js","/_next/static/chunks/6153d1a363729c2c.js"],"OutletBoundary"]
+8:"$Sreact.suspense"
+3:T521a,<hr>
+<p>剪贴板管理器能看到用户复制的所有内容——密码、银行卡号、身份证号、机密文件。<a href="https://deckclip.app">Deck</a> 是一款基于 Swift / SwiftUI 构建的 macOS 原生剪贴板管理应用，这种可见性意味着一项义务：应用必须保护它接触到的每一份数据。</p>
+<p>Deck 的做法是纵深防御——多层相互重叠的保护机制，覆盖过滤、加密、访问控制和隐蔽通信。</p>
+<h3 id="威胁模型">威胁模型</h3>
+<p>Deck 的安全设计针对三类场景：（1）<strong>数据泄漏</strong>——密码或卡号等敏感内容被意外保存到剪贴板历史；（2）<strong>本地未授权访问</strong>——有人在未锁定的 Mac 上直接查看剪贴板数据库；（3）<strong>传输截获</strong>——剪贴板数据在局域网共享或粘贴到不可信渠道时被拦截。架构中的每一层都对应其中一个或多个威胁场景。</p>
+<hr>
+<h2 id="1-多层敏感内容过滤管线">1. 多层敏感内容过滤管线</h2>
+<p>当用户从聊天窗口复制了一个银行卡号，过滤管线会在几毫秒内拦截——在这串数字触及数据库之前。</p>
+<p>管线位于 <code>ClipboardService.swift</code>，在 <code>checkForChangesInternal()</code> 检测到剪贴板变化时触发。四道检查按从快到慢的顺序依次执行，最廉价的检查充当快速出口。</p>
+<div class="blog-mermaid" data-mermaid="flowchart%20TD%0A%20%20%20%20A%5BClipboard%20Changed%3Cbr%3E%E5%89%AA%E8%B4%B4%E6%9D%BF%E5%8F%98%E5%8C%96%5D%20--%3E%20B%7BSystem%20Password%3Cbr%3EType%20Marker%3F%3Cbr%3E%E7%B3%BB%E7%BB%9F%E5%AF%86%E7%A0%81%E7%B1%BB%E5%9E%8B%E6%A0%87%E8%AE%B0%3F%7D%0A%20%20%20%20B%20--%3E%7CYes%20%E6%98%AF%7C%20SKIP%5BSkip%20%E2%80%94%20Record%20Nothing%3Cbr%3E%E8%B7%B3%E8%BF%87%EF%BC%8C%E4%B8%8D%E8%AE%B0%E5%BD%95%5D%0A%20%20%20%20B%20--%3E%7CNo%20%E5%90%A6%7C%20C%7BSensitive%20Window%3Cbr%3ETitle%3F%3Cbr%3E%E6%95%8F%E6%84%9F%E7%AA%97%E5%8F%A3%E6%A0%87%E9%A2%98%3F%7D%0A%20%20%20%20C%20--%3E%7CYes%20%E6%98%AF%7C%20SKIP%0A%20%20%20%20C%20--%3E%7CNo%20%E5%90%A6%7C%20D%7BBank%20Card%3Cbr%3ENumber%3F%3Cbr%3E%E9%93%B6%E8%A1%8C%E5%8D%A1%E5%8F%B7%3F%7D%0A%20%20%20%20D%20--%3E%7CYes%20%E6%98%AF%7C%20SKIP%0A%20%20%20%20D%20--%3E%7CNo%20%E5%90%A6%7C%20E%7BIdentity%20Document%3Cbr%3ENumber%3F%3Cbr%3E%E8%BA%AB%E4%BB%BD%E8%AF%81%E4%BB%B6%E5%8F%B7%3F%7D%0A%20%20%20%20E%20--%3E%7CYes%20%E6%98%AF%7C%20SKIP%0A%20%20%20%20E%20--%3E%7CNo%20%E5%90%A6%7C%20F%5BRecord%20Item%3Cbr%3E%E8%AE%B0%E5%BD%95%E6%9D%A1%E7%9B%AE%5D"><pre class="mermaid-fallback"><code>flowchart TD
+    A[Clipboard Changed<br>剪贴板变化] --> B{System Password<br>Type Marker?<br>系统密码类型标记?}
+    B -->|Yes 是| SKIP[Skip — Record Nothing<br>跳过，不记录]
+    B -->|No 否| C{Sensitive Window<br>Title?<br>敏感窗口标题?}
+    C -->|Yes 是| SKIP
+    C -->|No 否| D{Bank Card<br>Number?<br>银行卡号?}
+    D -->|Yes 是| SKIP
+    D -->|No 否| E{Identity Document<br>Number?<br>身份证件号?}
+    E -->|Yes 是| SKIP
+    E -->|No 否| F[Record Item<br>记录条目]</code></pre></div><h3 id="第一层-系统密码类型标记">第一层：系统密码类型标记</h3>
+<p>最快的检查——无需任何解析。1Password 和 macOS 钥匙串等密码管理器会为它们的剪贴板条目添加特殊的粘贴板类型标记：</p>
+<p>社区标准)</p>
+<p>如果 <code>pasteboard.types</code> 中出现以上任何一种类型，Deck 立即跳过该条目。不读取内容，不存储任何数据。</p>
+<h3 id="第二层-窗口标题感知自动暂停">第二层：窗口标题感知自动暂停</h3>
+<p>并非所有应用都会标记敏感内容。当用户在登录表单中输入时，窗口标题通常包含特征性词汇。Deck 通过 macOS Accessibility API（<code>AXUIElementCopyAttributeValue</code>）读取焦点窗口标题，并与约 20 个关键词进行匹配：</p>
+<div class="code-block-wrapper"><button class="copy-btn" aria-label="Copy code"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg></button><pre><code class="hljs">password, passwd, 密码, login, signin, 登录, credential, token,
+secret, keychain, 钥匙串, vault, 2fa, otp, authenticator,
+验证码, private, secure, 私密, 加密</code></pre></div><p>为了避免在每个轮询周期都频繁调用 AX API，窗口标题按 PID 缓存，TTL 为 0.4 秒。此检查需要 <code>AXIsProcessTrusted()</code> 辅助功能权限，并受 <code>smartWindowTitleDetection</code> 偏好设置控制。</p>
+<h3 id="第三层-luhn-算法银行卡检测">第三层：Luhn 算法银行卡检测</h3>
+<p>原始剪贴板文本中 13–19 位的数字序列（忽略空格和连字符）会经过两阶段验证：</p>
+<p><strong>第一阶段</strong> — 与已知卡组织的 IIN/BIN 前缀匹配：</p>
+<div class="table-wrapper"><table>
+<thead>
+<tr>
+<th>Prefix / 前缀</th>
+<th>Network / 卡组织</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>4</td>
+<td>Visa</td>
+</tr>
+<tr>
+<td>51–55</td>
+<td>Mastercard</td>
+</tr>
+<tr>
+<td>34, 37</td>
+<td>American Express</td>
+</tr>
+<tr>
+<td>62</td>
+<td>UnionPay / 银联</td>
+</tr>
+<tr>
+<td>6011, 65</td>
+<td>Discover</td>
+</tr>
+<tr>
+<td>35</td>
+<td>JCB</td>
+</tr>
+</tbody></table></div>
+<p><strong>第二阶段</strong> — 仅当前缀匹配时，才执行 Luhn 校验：</p>
+<div class="code-block-wrapper"><button class="copy-btn" aria-label="Copy code"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg></button><div class="code-lang-label">swift</div><pre><code class="hljs language-swift"><span class="hljs-keyword">func</span> <span class="hljs-title function_">passesLuhnCheck</span>(<span class="hljs-keyword">_</span> <span class="hljs-params">digits</span>: <span class="hljs-type">String</span>) -&gt; <span class="hljs-type">Bool</span> {
+    <span class="hljs-keyword">var</span> sum <span class="hljs-operator">=</span> <span class="hljs-number">0</span>
+    <span class="hljs-keyword">for</span> (index, digit) <span class="hljs-keyword">in</span> digits.reversed().enumerated() {
+        <span class="hljs-keyword">if</span> index <span class="hljs-operator">%</span> <span class="hljs-number">2</span> <span class="hljs-operator">==</span> <span class="hljs-number">1</span> {
+            <span class="hljs-keyword">let</span> doubled <span class="hljs-operator">=</span> digit <span class="hljs-operator">*</span> <span class="hljs-number">2</span>
+            sum <span class="hljs-operator">+=</span> doubled <span class="hljs-operator">&gt;</span> <span class="hljs-number">9</span> <span class="hljs-operator">?</span> doubled <span class="hljs-operator">-</span> <span class="hljs-number">9</span> : doubled
+        } <span class="hljs-keyword">else</span> {
+            sum <span class="hljs-operator">+=</span> digit
+        }
+    }
+    <span class="hljs-keyword">return</span> sum <span class="hljs-operator">%</span> <span class="hljs-number">10</span> <span class="hljs-operator">==</span> <span class="hljs-number">0</span>
+}</code></pre></div><p>两阶段设计是刻意的：对每一串数字都执行 Luhn 校验会浪费计算资源。前缀检查充当廉价过滤器，Luhn 仅在合理候选项上运行。</p>
+<h3 id="第四层-多国身份证件号检测">第四层：多国身份证件号检测</h3>
+<p>管线的最后一道过滤器覆盖了多个国家和地区的身份证件。每个子检测器采用正则匹配 + 特定国家/地区的校验码验证：</p>
+<div class="table-wrapper"><table>
+<thead>
+<tr>
+<th>Document / 证件类型</th>
+<th>Format / 格式</th>
+<th>Validation / 验证方式</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>China Mainland 18-digit / 中国大陆 18 位</td>
+<td><code>\d{17}[\dXx]</code></td>
+<td>Weighted checksum / 加权校验码</td>
+</tr>
+<tr>
+<td>China Mainland 15-digit / 中国大陆 15 位</td>
+<td><code>\d{15}</code></td>
+<td>Regex / 正则</td>
+</tr>
+<tr>
+<td>Taiwan ID / 台湾身份证</td>
+<td><code>[A-Z][12]\d{8}</code></td>
+<td>Letter-mapped weighted check / 字母映射加权</td>
+</tr>
+<tr>
+<td>Hong Kong ID / 香港身份证</td>
+<td><code>[A-Z]{1,2}\d{6}\(?[0-9A]\)?</code></td>
+<td>Letter-value weighted / 字母值加权</td>
+</tr>
+<tr>
+<td>US SSN/ITIN / 美国 SSN/ITIN</td>
+<td><code>\d{3}-\d{2}-\d{4}</code></td>
+<td>Area/group/serial rules / 区域规则</td>
+</tr>
+<tr>
+<td>German Tax ID / 德国税号</td>
+<td>11 digits / 11 位</td>
+<td>Modulo 11 / 模 11 校验</td>
+</tr>
+<tr>
+<td>Passport / 护照号</td>
+<td>Multi-format / 多国格式</td>
+<td>Pattern matching / 模式匹配</td>
+</tr>
+</tbody></table></div>
+<p>每个子检测器都不止于正则匹配。一个<em>看起来像</em>中国大陆身份证号、但未通过加权校验的字符串会被放行。这防止了订单号或时间戳等合法内容被误拦截。</p>
+<hr>
+<h2 id="2-aes-gcm-全链路加密">2. AES-GCM 全链路加密</h2>
+<p>过滤管线处理的是已知的敏感模式，但普通剪贴板内容——笔记、代码片段、私人消息——同样需要静态加密保护。Deck 在整个数据链路中使用 AES-256-GCM，与 TLS 1.3 相同的认证加密标准。</p>
+<h3 id="密钥管理">密钥管理</h3>
+<p>256 位对称密钥在首次使用时生成，并通过 <code>getOrCreateEncryptionKey()</code> 存入 macOS Keychain。密钥永远不会触及文件系统。为减少 Keychain 访问开销，密钥在内存中缓存 60 秒。</p>
+<h3 id="数据库列级加密">数据库列级加密</h3>
+<p>当安全模式（<code>securityModeEnabled</code>）开启时，以下数据库列在写入 SQLite 之前会被逐列加密：</p>
+<p>原始剪贴板数据
+搜索文本
+来源应用名
+自定义标题
+语义向量</p>
+<div class="code-block-wrapper"><button class="copy-btn" aria-label="Copy code"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg></button><div class="code-lang-label">swift</div><pre><code class="hljs language-swift"><span class="hljs-comment">// Encryption / 加密</span>
+<span class="hljs-keyword">let</span> sealedBox <span class="hljs-operator">=</span> <span class="hljs-keyword">try</span> <span class="hljs-type">AES</span>.<span class="hljs-type">GCM</span>.seal(data, using: key)
+<span class="hljs-keyword">return</span> sealedBox.combined  <span class="hljs-comment">// nonce + ciphertext + tag</span>
+
+<span class="hljs-comment">// Decryption / 解密</span>
+<span class="hljs-keyword">let</span> sealedBox <span class="hljs-operator">=</span> <span class="hljs-keyword">try</span> <span class="hljs-type">AES</span>.<span class="hljs-type">GCM</span>.<span class="hljs-type">SealedBox</span>(combined: encryptedData)
+<span class="hljs-keyword">return</span> <span class="hljs-keyword">try</span> <span class="hljs-type">AES</span>.<span class="hljs-type">GCM</span>.open(sealedBox, using: key)</code></pre></div><p>每次调用 <code>AES.GCM.seal</code> 都会生成全新的随机 nonce，因此对同一明文加密两次会产生不同的密文。GCM 认证标签确保密文的任何篡改都会在解密时被发现。</p>
+<h3 id="blob-文件加密">Blob 文件加密</h3>
+<p>超过 512 KB（<code>largeBlobThreshold</code>）的剪贴板条目以独立文件而非数据库内联方式存储。在安全模式下，这些 Blob 文件在写入磁盘前同样经过 AES-GCM 加密。</p>
+<h3 id="局域网共享加密">局域网共享加密</h3>
+<p>当 Deck 通过 MultipeerConnectivity 在设备间同步剪贴板内容时，共享数据使用 TOTP 验证后协商的会话密钥加密，与加密链路其他部分使用相同的 CryptoKit <code>AES.GCM</code> 原语。</p>
+<h3 id="性能代价">性能代价</h3>
+<p>Apple Silicon 上的 AES-GCM 有硬件加速，对于典型剪贴板条目（文本、小图片）来说单条加解密的开销可以忽略。真正的代价体现在别处：加密列会破坏 SQLite FTS5 和向量索引，迫使搜索退化为先解密再匹配的内存扫描（详见第 6 节）。60 秒密钥内存缓存和 300 条 <code>searchTextCache</code> 就是为了让这条退化路径保持可用的响应速度。</p>
+<hr>
+<h2 id="3-touch-id-生物识别认证">3. Touch ID 生物识别认证</h2>
+<p>加密覆盖了静态数据和传输中的数据，但如果有人直接走到一台未锁定的 Mac 前打开 Deck，加密就帮不上忙了。生物识别认证通过物理身份验证填补了这个缺口。</p>
+<p>Deck 使用 <code>LocalAuthentication</code> 框架，采用两级策略：</p>
+<p>回退**：<code>.deviceOwnerAuthentication</code> — system password when biometrics are unavailable / 生物识别不可用时使用系统密码</p>
+<p>提供两种超时模式：</p>
+<p>自动锁定**：5 minutes of inactivity triggers re-authentication / 5 分钟无操作后要求重新认证
+每次认证**：authentication required on every app launch (<code>authEveryTime</code>) / 每次打开应用都要求认证</p>
+<hr>
+<h2 id="4-零宽字符隐写">4. 零宽字符隐写</h2>
+<p>以上各层保护的是 Deck 内部的数据。隐写术则将保护向外延伸——用户可以在分享前将信息隐藏在普通文本中，这样即使传输渠道被窃听，内容也不会被识别。</p>
+<p>零宽字符是不占据可见空间的 Unicode 码位。Deck 使用其中四个字符进行 2 bit/字符的编码：</p>
+<div class="table-wrapper"><table>
+<thead>
+<tr>
+<th>Character / 字符</th>
+<th>Code Point / 码位</th>
+<th>Bits / 位值</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>ZWSP (Zero-Width Space / 零宽空格)</td>
+<td>U+200B</td>
+<td>00</td>
+</tr>
+<tr>
+<td>ZWNJ (Zero-Width Non-Joiner / 零宽非连接符)</td>
+<td>U+200C</td>
+<td>01</td>
+</tr>
+<tr>
+<td>ZWJ (Zero-Width Joiner / 零宽连接符)</td>
+<td>U+200D</td>
+<td>10</td>
+</tr>
+<tr>
+<td>BOM (Byte Order Mark / 字节序标记)</td>
+<td>U+FEFF</td>
+<td>11</td>
+</tr>
+</tbody></table></div>
+<p>编码流程：</p>
+<div class="code-block-wrapper"><button class="copy-btn" aria-label="Copy code"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg></button><pre><code class="hljs">Plaintext → AES-GCM Encrypt → Map Each 2-bit Pair to Zero-Width Char
+→ Prepend Magic Header &quot;DECKSTG1&quot; → Embed into Cover Text
+
+明文 → AES-GCM 加密 → 每 2 bit 映射为零宽字符
+→ 添加魔数头部 &quot;DECKSTG1&quot; → 嵌入载体文本</code></pre></div><p>结果是一段看起来完全正常的文本——&quot;会议改到下午 3 点&quot;——但其中包含了一段不可见的加密载荷，只有 Deck 能提取。</p>
+<hr>
+<h2 id="5-图片-lsb-隐写">5. 图片 LSB 隐写</h2>
+<p>当需要更大的载荷容量，或文本不适合作为载体时，Deck 支持图片最低有效位（LSB）隐写。</p>
+<p>该算法修改每个非透明像素各 RGB 通道的最低位，每像素可存储 3 bit。一张 1920×1080 无透明像素的图片可承载约 760 KB 的隐藏数据——对大多数消息来说绰绰有余。</p>
+<p>其流程与零宽字符方案类似：</p>
+<p>明文 → AES-GCM 加密
+添加 <code>DECKSTG1</code> 魔数头部（14 字节，含载荷长度）
+将加密后的 bit 写入像素 RGB 通道最低位
+通过 <code>CGContext</code> 重新编码图像</p>
+<p>透明像素（alpha &lt; 1）被跳过——修改它们会产生可见的视觉伪影。载体图片上限约为 25 MB。</p>
+<h3 id="隐写密钥管理">隐写密钥管理</h3>
+<p>隐写加密使用专用密钥，通过 HKDF-SHA256 从主密钥派生（<code>SteganographyKeyStore.swift</code>）。这种分离确保一个密钥被泄露时不会波及另一个。</p>
+<hr>
+<h2 id="6-安全的代价-安全模式下的搜索降级">6. 安全的代价：安全模式下的搜索降级</h2>
+<p>安全总有代价。当安全模式加密数据库列后，多种搜索能力失去了对明文的访问，必须优雅降级：</p>
+<div class="table-wrapper"><table>
+<thead>
+<tr>
+<th>Search Layer / 搜索层</th>
+<th>Normal Mode / 正常模式</th>
+<th>Security Mode / 安全模式</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>FTS5 Full-Text Search / FTS5 全文检索</td>
+<td>Available / 可用</td>
+<td>Disabled — <code>search_text</code> encrypted / 索引失效</td>
+</tr>
+<tr>
+<td>sqlite-vec Vector Search / sqlite-vec 向量检索</td>
+<td>Available / 可用</td>
+<td>Disabled — <code>vecIndexEnabled = false</code></td>
+</tr>
+<tr>
+<td>Semantic Search / 语义搜索</td>
+<td>NLEmbedding</td>
+<td>Degraded to plain-text matching / 降级为纯文本匹配</td>
+</tr>
+<tr>
+<td>Fuzzy Search / 模糊搜索</td>
+<td>FuseSearch</td>
+<td>Available — in-memory after decryption / 内存解密后搜索</td>
+</tr>
+<tr>
+<td>SQL LIKE</td>
+<td>Available / 可用</td>
+<td>Disabled — columns encrypted / 列已加密</td>
+</tr>
+<tr>
+<td>In-Memory Search / 内存搜索</td>
+<td>Fallback / 备用</td>
+<td>Primary — <code>searchWithLike</code> / 主力</td>
+</tr>
+</tbody></table></div>
+<p>在安全模式下，搜索退化为内存扫描：条目被即时解密并在内存中匹配。为保持可用性，扫描上限为 <code>max(5000, limit × 200)</code> 条（硬上限 20,000 条），<code>searchTextCache</code> 缓存最近 300 条已解密文本以避免重复解密。</p>
+<p>速度不如 FTS5，但在不向磁盘写入明文搜索索引的前提下保留了功能可用性。</p>
+<hr>
+<h2 id="7-各层如何协同工作">7. 各层如何协同工作</h2>
+<p>每一层对应不同的威胁面。过滤将敏感数据挡在系统之外；加密保护已存储的内容；生物识别阻止未经授权的物理访问；隐写术保护离开 Deck 之后的数据。单独任何一层都不够用——它们的价值在于重叠。</p>
+<div class="blog-mermaid" data-mermaid="graph%20LR%0A%20%20%20%20A%5BClipboard%20Input%3Cbr%3E%E5%89%AA%E8%B4%B4%E6%9D%BF%E8%BE%93%E5%85%A5%5D%20--%3E%20B%5BSensitive%20Content%3Cbr%3EFiltering%3Cbr%3E%E6%95%8F%E6%84%9F%E5%86%85%E5%AE%B9%E8%BF%87%E6%BB%A4%5D%0A%20%20%20%20B%20--%3E%20C%5BAES-GCM%3Cbr%3EEncryption%3Cbr%3EAES-GCM%20%E5%8A%A0%E5%AF%86%5D%0A%20%20%20%20C%20--%3E%20D%5BKeychain%20Key%3Cbr%3EManagement%3Cbr%3E%E9%92%A5%E5%8C%99%E4%B8%B2%E5%AF%86%E9%92%A5%E7%AE%A1%E7%90%86%5D%0A%20%20%20%20C%20--%3E%20E%5BBlob%20File%3Cbr%3EEncryption%3Cbr%3EBlob%20%E6%96%87%E4%BB%B6%E5%8A%A0%E5%AF%86%5D%0A%20%20%20%20C%20--%3E%20F%5BLAN%20Sharing%3Cbr%3EEncryption%3Cbr%3E%E5%B1%80%E5%9F%9F%E7%BD%91%E5%85%B1%E4%BA%AB%E5%8A%A0%E5%AF%86%5D%0A%20%20%20%20A%20--%3E%20G%5BTouch%20ID%3Cbr%3EBiometrics%3Cbr%3E%E7%94%9F%E7%89%A9%E8%AF%86%E5%88%AB%5D%0A%20%20%20%20A%20--%3E%20H%5BSteganography%3Cbr%3E%E9%9A%90%E5%86%99%E6%9C%AF%5D%0A%20%20%20%20H%20--%3E%20H1%5BZero-Width%3Cbr%3EChars%3Cbr%3E%E9%9B%B6%E5%AE%BD%E5%AD%97%E7%AC%A6%5D%0A%20%20%20%20H%20--%3E%20H2%5BImage%20LSB%3Cbr%3E%E5%9B%BE%E7%89%87%20LSB%5D"><pre class="mermaid-fallback"><code>graph LR
+    A[Clipboard Input<br>剪贴板输入] --> B[Sensitive Content<br>Filtering<br>敏感内容过滤]
+    B --> C[AES-GCM<br>Encryption<br>AES-GCM 加密]
+    C --> D[Keychain Key<br>Management<br>钥匙串密钥管理]
+    C --> E[Blob File<br>Encryption<br>Blob 文件加密]
+    C --> F[LAN Sharing<br>Encryption<br>局域网共享加密]
+    A --> G[Touch ID<br>Biometrics<br>生物识别]
+    A --> H[Steganography<br>隐写术]
+    H --> H1[Zero-Width<br>Chars<br>零宽字符]
+    H --> H2[Image LSB<br>图片 LSB]</code></pre></div><ul>
+<li><strong>过滤</strong>在入口处拦截密码、银行卡号、身份证号，阻止它们进入存储。</li>
+<li><strong>加密</strong>覆盖数据库列、磁盘 Blob 文件和局域网传输，保护所有已存储和在途数据。</li>
+<li><strong>生物识别</strong>在有人坐在未锁定的 Mac 前时，要求 Touch ID 或密码才能查看历史。</li>
+<li><strong>隐写术</strong>让用户在不可信的渠道上分享内容时，多一层不可见的加密保护。</li>
+<li>开启安全模式后<strong>搜索自动降级</strong>为内存扫描，避免在磁盘上留下明文索引。</li>
+</ul>
+<p>Deck 会读取用户复制的所有内容。上述架构确保这种可见性不会变成安全负担——每一层削减不同类别的风险，合在一起覆盖了任何单一机制留下的空隙。</p>
+0:{"buildId":"uj7zkHqCugl7M3KbKSjms","rsc":["$","$1","c",{"children":[[["$","script",null,{"type":"application/ld+json","dangerouslySetInnerHTML":{"__html":"{\"@context\":\"https://schema.org\",\"@type\":\"BlogPosting\",\"headline\":\"Deck 的隐私架构：剪贴板管理器如何保护它读到的一切\",\"description\":\"纵深防御——敏感内容过滤、AES-GCM 加密、Touch ID 生物识别和零宽字符隐写术。\",\"url\":\"https://deckclip.app/blog/privacy-security\",\"datePublished\":\"2026-03-06T00:00:00+00:00\",\"dateModified\":\"2026-03-06T00:00:00+00:00\",\"author\":{\"@type\":\"Organization\",\"name\":\"Deck\",\"url\":\"https://deckclip.app\"},\"publisher\":{\"@type\":\"Organization\",\"name\":\"Deck\",\"url\":\"https://deckclip.app\",\"logo\":{\"@type\":\"ImageObject\",\"url\":\"https://deckclip.app/Deck.jpeg\"}},\"mainEntityOfPage\":{\"@type\":\"WebPage\",\"@id\":\"https://deckclip.app/blog/privacy-security\"},\"image\":\"https://deckclip.app/Deck.jpeg\",\"keywords\":\"Privacy, Security, Encryption\",\"timeRequired\":\"PT7M\",\"inLanguage\":\"en\",\"isAccessibleForFree\":true}"}}],["$","script",null,{"type":"application/ld+json","dangerouslySetInnerHTML":{"__html":"{\"@context\":\"https://schema.org\",\"@type\":\"BreadcrumbList\",\"itemListElement\":[{\"@type\":\"ListItem\",\"position\":1,\"name\":\"首页\",\"item\":\"https://deckclip.app/zh-cn\"},{\"@type\":\"ListItem\",\"position\":2,\"name\":\"博客\",\"item\":\"https://deckclip.app/zh-cn/blog\"},{\"@type\":\"ListItem\",\"position\":3,\"name\":\"Deck 的隐私架构：剪贴板管理器如何保护它读到的一切\",\"item\":\"https://deckclip.app/zh-cn/blog/privacy-security\"}]}"}}],["$","$L2",null,{"post":{"slug":"privacy-security","title":"Deck 的隐私架构：剪贴板管理器如何保护它读到的一切","date":"2026-03-06","summary":"纵深防御——敏感内容过滤、AES-GCM 加密、Touch ID 生物识别和零宽字符隐写术。","tags":["Privacy","Security","Encryption"],"html":"$3","readingTime":7},"toc":[{"depth":3,"id":"威胁模型","text":"威胁模型"},{"depth":2,"id":"1-多层敏感内容过滤管线","text":"1. 多层敏感内容过滤管线"},{"depth":3,"id":"第一层-系统密码类型标记","text":"第一层：系统密码类型标记"},{"depth":3,"id":"第二层-窗口标题感知自动暂停","text":"第二层：窗口标题感知自动暂停"},{"depth":3,"id":"第三层-luhn-算法银行卡检测","text":"第三层：Luhn 算法银行卡检测"},{"depth":3,"id":"第四层-多国身份证件号检测","text":"第四层：多国身份证件号检测"},{"depth":2,"id":"2-aes-gcm-全链路加密","text":"2. AES-GCM 全链路加密"},{"depth":3,"id":"密钥管理","text":"密钥管理"},{"depth":3,"id":"数据库列级加密","text":"数据库列级加密"},{"depth":3,"id":"blob-文件加密","text":"Blob 文件加密"},{"depth":3,"id":"局域网共享加密","text":"局域网共享加密"},{"depth":3,"id":"性能代价","text":"性能代价"},{"depth":2,"id":"3-touch-id-生物识别认证","text":"3. Touch ID 生物识别认证"},{"depth":2,"id":"4-零宽字符隐写","text":"4. 零宽字符隐写"},{"depth":2,"id":"5-图片-lsb-隐写","text":"5. 图片 LSB 隐写"},{"depth":3,"id":"隐写密钥管理","text":"隐写密钥管理"},{"depth":2,"id":"6-安全的代价-安全模式下的搜索降级","text":"6. 安全的代价：安全模式下的搜索降级"},{"depth":2,"id":"7-各层如何协同工作","text":"7. 各层如何协同工作"}]}]],["$L4","$L5"],"$L6"]}],"loading":null,"isPartial":false}
+4:["$","script","script-0",{"src":"/_next/static/chunks/63d601ccd18bb55a.js","async":true}]
+5:["$","script","script-1",{"src":"/_next/static/chunks/23f147fec4f52e6e.js","async":true}]
+6:["$","$L7",null,{"children":["$","$8",null,{"name":"Next.MetadataOutlet","children":"$@9"}]}]
+9:null

@@ -1,0 +1,350 @@
+1:"$Sreact.fragment"
+2:I[98407,["/_next/static/chunks/0326615652f30df1.js","/_next/static/chunks/31de6e89f09f52e0.js","/_next/static/chunks/e0d9687062e37c12.js","/_next/static/chunks/63d601ccd18bb55a.js","/_next/static/chunks/23f147fec4f52e6e.js"],"BlogPostPage"]
+7:I[97367,["/_next/static/chunks/ff1a16fafef87110.js","/_next/static/chunks/6153d1a363729c2c.js"],"OutletBoundary"]
+8:"$Sreact.suspense"
+3:T79fe,<p><strong>From 0.5s to 15s — How Deck Makes Clipboard Monitoring Both Responsive and Power-Efficient</strong></p>
+<hr>
+<p>The core of clipboard monitoring on macOS is straightforward: poll <code>NSPasteboard.general.changeCount</code> on a timer, check if the value changed, read the new content. A weekend prototype can get this working.</p>
+<p>But a clipboard manager that runs 10+ hours a day needs to handle things the prototype ignores — battery impact from constant polling, 200 MB screenshots that blow up memory, Figma&#39;s non-standard clipboard format, and IDE source tracking across five editor families. This post covers how Deck handles these problems: adaptive polling, content-type parsing, OOM protection, IDE integration, and Figma-aware clipboard detection.</p>
+<hr>
+<h2 id="1-adaptive-polling-doing-less-when-it-matters">1. Adaptive Polling: Doing Less When It Matters</h2>
+<p>The naive approach is a fixed-interval timer — say, every 0.5 seconds. That&#39;s responsive, but it&#39;s also 7,200 wakeups per hour. On a laptop running on battery, that&#39;s unacceptable.</p>
+<p>Deck solves this with an <strong>adaptive polling mechanism</strong> that dynamically adjusts the interval based on three signals: user activity, power state, and thermal pressure.</p>
+<h3 id="the-bounds">The Bounds</h3>
+<div class="table-wrapper"><table>
+<thead>
+<tr>
+<th>Constant</th>
+<th>Value</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>minInterval</code></td>
+<td>0.5s</td>
+<td>Fastest poll rate (active use) / 最快轮询间隔（活跃使用时）</td>
+</tr>
+<tr>
+<td><code>maxInterval</code></td>
+<td>2.0s</td>
+<td>Normal ceiling / 正常最大间隔</td>
+</tr>
+<tr>
+<td><code>idleSecondsThreshold</code></td>
+<td>8.0s</td>
+<td>Idle detection threshold / 用户空闲判定阈值</td>
+</tr>
+<tr>
+<td><code>idleMaxInterval</code></td>
+<td>15.0s</td>
+<td>Ceiling when user is idle / 空闲时最大间隔</td>
+</tr>
+<tr>
+<td><code>thermalMaxInterval</code></td>
+<td>10.0s</td>
+<td>Ceiling under thermal pressure / 热状态下最大间隔</td>
+</tr>
+<tr>
+<td><code>pollBoundsCacheTTL</code></td>
+<td>1.0s</td>
+<td>Cache TTL for computed bounds / 轮询边界缓存有效期</td>
+</tr>
+</tbody></table></div>
+<p>The core function <code>effectivePollBounds()</code> computes the current min/max interval by layering these conditions:</p>
+<div class="code-block-wrapper"><button class="copy-btn" aria-label="Copy code"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg></button><div class="code-lang-label">swift</div><pre><code class="hljs language-swift"><span class="hljs-keyword">func</span> <span class="hljs-title function_">effectivePollBounds</span>() -&gt; (min: <span class="hljs-type">TimeInterval</span>, max: <span class="hljs-type">TimeInterval</span>) {
+    <span class="hljs-keyword">var</span> effectiveMin <span class="hljs-operator">=</span> minInterval  <span class="hljs-comment">// 0.5s</span>
+    <span class="hljs-keyword">var</span> effectiveMax <span class="hljs-operator">=</span> maxInterval  <span class="hljs-comment">// 2.0s</span>
+
+    <span class="hljs-comment">// Low Power Mode: widen the interval significantly</span>
+    <span class="hljs-keyword">if</span> <span class="hljs-type">ProcessInfo</span>.processInfo.isLowPowerModeEnabled {
+        effectiveMin <span class="hljs-operator">=</span> <span class="hljs-built_in">min</span>(effectiveMin <span class="hljs-operator">*</span> <span class="hljs-number">2.0</span>, <span class="hljs-number">2.0</span>)
+        effectiveMax <span class="hljs-operator">=</span> <span class="hljs-built_in">max</span>(effectiveMax <span class="hljs-operator">*</span> <span class="hljs-number">4.0</span>, <span class="hljs-number">8.0</span>)
+    }
+
+    <span class="hljs-comment">// Thermal pressure: back off further</span>
+    <span class="hljs-keyword">if</span> thermalState <span class="hljs-operator">==</span> .serious <span class="hljs-operator">||</span> thermalState <span class="hljs-operator">==</span> .critical {
+        effectiveMin <span class="hljs-operator">=</span> <span class="hljs-built_in">max</span>(effectiveMin, <span class="hljs-number">1.0</span>)
+        effectiveMax <span class="hljs-operator">=</span> <span class="hljs-built_in">max</span>(effectiveMax, thermalMaxInterval) <span class="hljs-comment">// 10s</span>
+    }
+
+    <span class="hljs-comment">// User idle: stretch the max</span>
+    <span class="hljs-keyword">if</span> secondsSinceUserInteraction() <span class="hljs-operator">&gt;</span> idleSecondsThreshold {
+        effectiveMax <span class="hljs-operator">=</span> <span class="hljs-built_in">max</span>(effectiveMax, idleMaxInterval) <span class="hljs-comment">// 15s</span>
+    }
+
+    <span class="hljs-keyword">return</span> (effectiveMin, effectiveMax)
+}</code></pre></div><p>When the clipboard changes, the interval snaps back to <code>min</code> immediately. When nothing happens, it backs off by 1.5× on each tick, up to the computed <code>max</code>. So when the user is actively copying, the poll rate stays at 0.5s; after 8 seconds of inactivity, it gradually stretches to 15s.</p>
+<div class="code-block-wrapper"><button class="copy-btn" aria-label="Copy code"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg></button><div class="code-lang-label">swift</div><pre><code class="hljs language-swift"><span class="hljs-keyword">func</span> <span class="hljs-title function_">adjustPollInterval</span>(<span class="hljs-params">success</span>: <span class="hljs-type">Bool</span>) {
+    <span class="hljs-keyword">let</span> bounds <span class="hljs-operator">=</span> effectivePollBounds()
+    <span class="hljs-keyword">if</span> success {
+        pollInterval <span class="hljs-operator">=</span> bounds.min
+    } <span class="hljs-keyword">else</span> {
+        pollInterval <span class="hljs-operator">=</span> <span class="hljs-built_in">min</span>(pollInterval <span class="hljs-operator">*</span> <span class="hljs-number">1.5</span>, bounds.max)
+    }
+}</code></pre></div><h3 id="timer-architecture">Timer Architecture</h3>
+<p>The timer runs on a dedicated <code>DispatchQueue</code> at <code>.utility</code> QoS, not on the main thread:</p>
+<div class="code-block-wrapper"><button class="copy-btn" aria-label="Copy code"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg></button><div class="code-lang-label">swift</div><pre><code class="hljs language-swift"><span class="hljs-keyword">let</span> pollQueue <span class="hljs-operator">=</span> <span class="hljs-type">DispatchQueue</span>(label: <span class="hljs-string">&quot;deck.clipboard.poll&quot;</span>, qos: .utility)
+<span class="hljs-keyword">let</span> pollTimer <span class="hljs-operator">=</span> <span class="hljs-type">DispatchSource</span>.makeTimerSource(queue: pollQueue)</code></pre></div><p>A 25% leeway is applied (clamped to 50–500ms), letting macOS coalesce timer wakeups with other system timers. This reduces the actual wakeup frequency noticeably on battery.</p>
+<h3 id="power-state-awareness">Power State Awareness</h3>
+<p>Deck listens to <code>NSProcessInfoPowerStateDidChange</code> to detect Low Power Mode transitions. Beyond adjusting poll intervals, it also throttles downstream work — for example, link previews skip image fetching when running on battery:</p>
+<div class="code-block-wrapper"><button class="copy-btn" aria-label="Copy code"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg></button><div class="code-lang-label">swift</div><pre><code class="hljs language-swift"><span class="hljs-keyword">let</span> includeImage <span class="hljs-operator">=</span> <span class="hljs-operator">!</span><span class="hljs-type">ProcessInfo</span>.processInfo.isLowPowerModeEnabled
+<span class="hljs-type">LinkMetadataService</span>.shared.prefetch(for: url, includeImage: includeImage)</code></pre></div><hr>
+<h2 id="2-c-interception-bypassing-the-poll-cycle">2. ⌘C Interception: Bypassing the Poll Cycle</h2>
+<p>Polling is inherently reactive. Even at 0.5s intervals, there&#39;s a perceptible delay. Deck eliminates this by <strong>intercepting ⌘C/⌘X globally</strong> and triggering a clipboard check immediately.</p>
+<div class="code-block-wrapper"><button class="copy-btn" aria-label="Copy code"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg></button><div class="code-lang-label">swift</div><pre><code class="hljs language-swift"><span class="hljs-keyword">func</span> <span class="hljs-title function_">installCopyMonitor</span>() {
+    <span class="hljs-type">NSEvent</span>.addGlobalMonitorForEvents(matching: .keyDown) { event <span class="hljs-keyword">in</span>
+        <span class="hljs-keyword">guard</span> event.modifierFlags.contains(.command) <span class="hljs-keyword">else</span> { <span class="hljs-keyword">return</span> }
+        <span class="hljs-keyword">let</span> keyCode <span class="hljs-operator">=</span> event.keyCode
+        <span class="hljs-comment">// 0x08 = C, 0x07 = X</span>
+        <span class="hljs-keyword">guard</span> keyCode <span class="hljs-operator">==</span> <span class="hljs-number">0x08</span> <span class="hljs-operator">||</span> keyCode <span class="hljs-operator">==</span> <span class="hljs-number">0x07</span> <span class="hljs-keyword">else</span> { <span class="hljs-keyword">return</span> }
+
+        <span class="hljs-keyword">self</span>.pendingCopyCheck<span class="hljs-operator">?</span>.cancel()
+        <span class="hljs-keyword">self</span>.pendingCopyCheck <span class="hljs-operator">=</span> <span class="hljs-type">Task</span> {
+            <span class="hljs-keyword">try?</span> <span class="hljs-keyword">await</span> <span class="hljs-type">Task</span>.sleep(nanoseconds: <span class="hljs-number">80_000_000</span>) <span class="hljs-comment">// 80ms</span>
+            <span class="hljs-keyword">await</span> <span class="hljs-keyword">self</span>.checkForChanges()
+        }
+    }
+}</code></pre></div><p>The 80ms delay is deliberate: the source app needs a moment to actually write data to <code>NSPasteboard</code>. Cancel-and-reschedule ensures rapid consecutive ⌘C presses don&#39;t spawn redundant checks.</p>
+<hr>
+<h2 id="3-content-type-resolution-the-priority-ladder">3. Content Type Resolution: The Priority Ladder</h2>
+<p><code>NSPasteboard</code> is not a single-value container. A single copy operation can deposit dozens of representations — PNG, TIFF, RTF, HTML, plain text, private app types — and the clipboard manager must pick the most meaningful one.</p>
+<p>Deck defines an explicit priority order:</p>
+<div class="code-block-wrapper"><button class="copy-btn" aria-label="Copy code"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg></button><div class="code-lang-label">swift</div><pre><code class="hljs language-swift"><span class="hljs-comment">// PasteboardType.supportedTypes (highest → lowest)</span>
+.png, .tiff, .jpeg, .heic, .heif, .gif, .webp, .bmp,  <span class="hljs-comment">// Images</span>
+.rtfd, .flatRTFD, .rtf,                                  <span class="hljs-comment">// Rich text</span>
+.fileURL,                                                 <span class="hljs-comment">// Files</span>
+.publicURL,                                               <span class="hljs-comment">// URLs</span>
+.string                                                   <span class="hljs-comment">// Plain text</span></code></pre></div><p>Images take the highest priority because they&#39;re the most information-dense and hardest to reconstruct. Plain text sits at the bottom — it&#39;s almost always available as a fallback.</p>
+<h3 id="the-three-level-text-fallback-chain">The Three-Level Text Fallback Chain</h3>
+<p>When the primary type can&#39;t be parsed, Deck doesn&#39;t give up. It walks a three-level fallback chain:</p>
+<ol>
+<li><p><strong><code>resolveHTMLTextPayload()</code></strong> — Checks for HTML content or Figma markup first.</p>
+</li>
+<li><p><strong><code>resolveUTF16PlainText()</code></strong> — Tries <code>public.utf16-external-plain-text</code>, then <code>public.utf16-plain-text</code>.</p>
+</li>
+<li><p><strong><code>resolveGenericTextPayload()</code></strong> — Iterates all types conforming to <code>UTType.text</code>.</p>
+</li>
+<li><p><strong><code>resolveHTMLTextPayload()</code></strong></p>
+</li>
+<li><p><strong><code>resolveGenericTextPayload()</code></strong></p>
+</li>
+</ol>
+<p>An exclusion list of ~20 types (including <code>.string</code>, <code>.rtf</code>, <code>.html</code>, <code>.pdf</code>, various WebKit/Chromium internal types, and macOS system types) prevents the fallback chain from re-processing types that were already tried or are known to be noise.</p>
+<p>A practical optimization: when an RTFD item also carries a plain text representation, Deck prefers the plain text — avoiding the overhead of RTFD decoding when the content is textual anyway.</p>
+<hr>
+<h2 id="4-oom-protection-defending-against-the-200-mb-screenshot">4. OOM Protection: Defending Against the 200 MB Screenshot</h2>
+<p>A clipboard manager that crashes when you copy a large image is worse than no clipboard manager at all. Deck implements <strong>multi-layered OOM protection</strong> with escalating thresholds:</p>
+<div class="table-wrapper"><table>
+<thead>
+<tr>
+<th>Threshold</th>
+<th>Value</th>
+<th>What it guards</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>maxPerTypeBytes</code></td>
+<td>1 MB</td>
+<td>Per-type snapshot cap / 单类型快照上限</td>
+</tr>
+<tr>
+<td><code>maxSnapshotBytes</code></td>
+<td>4 MB</td>
+<td>Total snapshot byte limit / 粘贴快照总字节上限</td>
+</tr>
+<tr>
+<td><code>maxInlineImagePasteBytes</code></td>
+<td>25 MB</td>
+<td>Beyond this, skip inline image bytes if file URL exists / 超过此值且有文件 URL 时不写入图片字节</td>
+</tr>
+<tr>
+<td><code>largeBlobThreshold</code></td>
+<td>512 KB</td>
+<td>Data above this is stored as a separate blob file / 超过此值存为独立 Blob 文件</td>
+</tr>
+<tr>
+<td><code>maxImageDataSize</code></td>
+<td>100 MB</td>
+<td>Images above this are never loaded directly / 超过此值的图片不直接加载</td>
+</tr>
+</tbody></table></div>
+<p>The 512 KB blob threshold is particularly interesting. Instead of storing large data inline in SQLite, Deck writes it to a separate file via <code>BlobStorage.shared.storeAsync</code> and stores only the path in the database. This keeps the database lean and prevents SQLite page fragmentation from large BLOBs.</p>
+<p>For images exceeding 100 MB, <code>resolvedData()</code> returns <code>nil</code> outright — the image is simply too large to hold in memory. For display purposes, <code>thumbnail()</code> uses <code>CGImageSourceCreateThumbnailAtIndex</code> to generate a thumbnail via progressive decoding, never loading the full bitmap:</p>
+<div class="code-block-wrapper"><button class="copy-btn" aria-label="Copy code"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg></button><div class="code-lang-label">swift</div><pre><code class="hljs language-swift"><span class="hljs-keyword">func</span> <span class="hljs-title function_">generateSafeThumbnailFromData</span>(<span class="hljs-keyword">_</span> <span class="hljs-params">data</span>: <span class="hljs-type">Data</span>, <span class="hljs-params">maxDimension</span>: <span class="hljs-type">CGFloat</span>) -&gt; <span class="hljs-type">NSImage</span>? {
+    <span class="hljs-keyword">let</span> options: [<span class="hljs-type">CFString</span>: <span class="hljs-keyword">Any</span>] <span class="hljs-operator">=</span> [
+        kCGImageSourceCreateThumbnailFromImageAlways: <span class="hljs-literal">true</span>,
+        kCGImageSourceThumbnailMaxPixelSize: maxDimension,
+        kCGImageSourceCreateThumbnailWithTransform: <span class="hljs-literal">true</span>,
+        kCGImageSourceShouldCacheImmediately: <span class="hljs-literal">false</span>
+    ]
+    <span class="hljs-keyword">guard</span> <span class="hljs-keyword">let</span> source <span class="hljs-operator">=</span> <span class="hljs-type">CGImageSourceCreateWithData</span>(data <span class="hljs-keyword">as</span> <span class="hljs-type">CFData</span>, <span class="hljs-literal">nil</span>),
+          <span class="hljs-keyword">let</span> thumbnail <span class="hljs-operator">=</span> <span class="hljs-type">CGImageSourceCreateThumbnailAtIndex</span>(source, <span class="hljs-number">0</span>, options <span class="hljs-keyword">as</span> <span class="hljs-type">CFDictionary</span>)
+    <span class="hljs-keyword">else</span> { <span class="hljs-keyword">return</span> <span class="hljs-literal">nil</span> }
+    <span class="hljs-keyword">return</span> <span class="hljs-type">NSImage</span>(cgImage: thumbnail, size: .zero)
+}</code></pre></div><hr>
+<h2 id="5-ide-source-anchor-tracking-know-where-it-came-from">5. IDE Source Anchor Tracking: Know Where It Came From</h2>
+<p>Example: you copied a snippet from VS Code 20 minutes ago. You want to paste it, but you also want to jump back to where you copied it from.</p>
+<p>Deck captures a <strong><code>SourceAnchor</code></strong> at copy time — the file path, line number, column, and IDE identity — so you can navigate back with a single click.</p>
+<div class="code-block-wrapper"><button class="copy-btn" aria-label="Copy code"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg></button><div class="code-lang-label">swift</div><pre><code class="hljs language-swift"><span class="hljs-keyword">struct</span> <span class="hljs-title class_">SourceAnchor</span> {
+    <span class="hljs-keyword">var</span> ide: <span class="hljs-type">IDEKind</span>
+    <span class="hljs-keyword">var</span> filePath: <span class="hljs-type">String</span>
+    <span class="hljs-keyword">var</span> line: <span class="hljs-type">Int</span>?
+    <span class="hljs-keyword">var</span> column: <span class="hljs-type">Int</span>?
+    <span class="hljs-keyword">var</span> sourceBundleId: <span class="hljs-type">String</span>?
+    <span class="hljs-keyword">var</span> captureMethod: <span class="hljs-type">String</span>?
+    <span class="hljs-keyword">var</span> capturedAt: <span class="hljs-type">Int64</span>?
+    <span class="hljs-keyword">var</span> openHint: <span class="hljs-type">IDEOpenHint</span>?
+}</code></pre></div><h3 id="supported-ides">Supported IDEs</h3>
+<div class="table-wrapper"><table>
+<thead>
+<tr>
+<th>IDE</th>
+<th>Bundle ID(s)</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>VS Code</td>
+<td><code>com.microsoft.VSCode</code>, <code>com.microsoft.VSCodeInsiders</code></td>
+</tr>
+<tr>
+<td>Cursor</td>
+<td><code>com.todesktop.230313mzl4w4u92</code>, <code>com.anysphere.cursor</code>, <code>com.cursor.Cursor</code></td>
+</tr>
+<tr>
+<td>Windsurf</td>
+<td><code>com.exafunction.windsurf</code></td>
+</tr>
+<tr>
+<td>Xcode</td>
+<td><code>com.apple.dt.Xcode</code></td>
+</tr>
+<tr>
+<td>JetBrains IDEs</td>
+<td><code>com.jetbrains.*</code></td>
+</tr>
+</tbody></table></div>
+<h3 id="how-it-works">How It Works</h3>
+<p>Source identification starts with <code>org.nspasteboard.source</code> — a pasteboard type that some apps (especially IDE-adjacent tools) write. If that&#39;s missing, Deck falls back to <code>sourceApp.bundleIdentifier</code>.</p>
+<p>The file path and cursor position come from the <strong>macOS Accessibility API</strong>. Deck queries the focused UI element for:</p>
+<ul>
+<li><code>kAXInsertionPointLineNumberAttribute</code> → cursor line number</li>
+<li><code>kAXSelectedTextRangeAttribute</code> + <code>kAXLineForIndexParameterizedAttribute</code> → selection start line</li>
+<li><code>kAXRangeForLineParameterizedAttribute</code> → column calculation</li>
+</ul>
+<p>Different IDEs have different Accessibility tree depths, so Deck uses tuned search budgets:</p>
+<div class="table-wrapper"><table>
+<thead>
+<tr>
+<th>IDE Family</th>
+<th><code>maxDepth</code></th>
+<th><code>maxNodes</code></th>
+</tr>
+</thead>
+<tbody><tr>
+<td>VS Code / Cursor / Windsurf</td>
+<td>8</td>
+<td>2000</td>
+</tr>
+<tr>
+<td>Xcode / JetBrains</td>
+<td>4</td>
+<td>200</td>
+</tr>
+</tbody></table></div>
+<h3 id="jump-back">Jump Back</h3>
+<p>Each IDE family has its own mechanism for &quot;open file at line&quot;:</p>
+<ul>
+<li><strong>VS Code / Cursor / Windsurf</strong>: <code>code -g file:line:column</code> or <code>vscode://file/...</code> URL scheme</li>
+<li><strong>Xcode</strong>: <code>xed -l line filePath</code></li>
+<li><strong>JetBrains</strong>: <code>http://localhost:63342/api/file/...</code> (local REST API)</li>
+</ul>
+<hr>
+<h2 id="6-figma-clipboard-detection">6. Figma Clipboard Detection</h2>
+<p>Figma runs as a Chromium-based desktop app, and its clipboard behavior reflects that. When you copy a frame or component in Figma, the pasteboard receives what looks like standard HTML — but embedded inside it is base64-encoded design data wrapped in custom <code>(figma)</code> / <code>(figmeta)</code> markers. Most clipboard managers treat this as HTML or plain text, stripping the Figma-specific data entirely. When you paste it back, the design structure is gone — you get a flat image or garbled text instead of the original editable component.</p>
+<p>Deck detects Figma content via <code>containsFigmaMarker(in:)</code>, which scans the HTML for these markers. Once detected, a multi-step extraction pipeline kicks in:</p>
+<ol>
+<li><p><strong><code>resolveFigmaPayload()</code></strong> — Entry point; only runs for unresolved types.</p>
+</li>
+<li><p><strong><code>extractFigmaPayload()</code></strong> — Searches <code>UnsupportedPasteboardPayload.items</code> for Figma HTML.</p>
+</li>
+<li><p><strong><code>extractFigmaPayloadFromPlistFallback()</code></strong> — Falls back to plist parsing if needed.</p>
+</li>
+<li><p><strong><code>buildFigmaPayload()</code></strong> — Extracts <code>(figma)</code> and <code>(figmeta)</code> base64 data from the HTML.</p>
+</li>
+<li><p><strong><code>resolveFigmaPayload()</code></strong></p>
+</li>
+<li><p><strong><code>extractFigmaPayloadFromPlistFallback()</code></strong></p>
+</li>
+<li><p><strong><code>buildFigmaPayload()</code></strong></p>
+</li>
+</ol>
+<p>The extracted metadata is structured as:</p>
+<div class="code-block-wrapper"><button class="copy-btn" aria-label="Copy code"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg></button><div class="code-lang-label">swift</div><pre><code class="hljs language-swift"><span class="hljs-keyword">struct</span> <span class="hljs-title class_">FigmaClipboardMeta</span> {
+    <span class="hljs-keyword">var</span> fileKey: <span class="hljs-type">String</span>
+    <span class="hljs-keyword">var</span> pasteID: <span class="hljs-type">String</span>
+    <span class="hljs-keyword">var</span> dataType: <span class="hljs-type">String</span>
+}
+
+<span class="hljs-keyword">struct</span> <span class="hljs-title class_">FigmaClipboardPayload</span> {
+    <span class="hljs-keyword">var</span> html: <span class="hljs-type">String</span>
+    <span class="hljs-keyword">var</span> figmaBase64: <span class="hljs-type">String</span>
+    <span class="hljs-keyword">var</span> figmetaBase64: <span class="hljs-type">String</span>
+    <span class="hljs-keyword">var</span> meta: <span class="hljs-type">FigmaClipboardMeta</span>
+    <span class="hljs-keyword">var</span> sourceURL: <span class="hljs-type">String</span>?  <span class="hljs-comment">// from org.chromium.source-url</span>
+}</code></pre></div><p>A critical design decision: once Figma content is detected, Deck <strong>skips the text fallback chain entirely</strong>. The structured Figma data is preserved intact, rather than being flattened into a plain text representation that would lose all design semantics.</p>
+<hr>
+<h2 id="7-the-full-monitoring-loop">7. The Full Monitoring Loop</h2>
+<p>Putting it all together, here&#39;s what happens on every clipboard check:</p>
+<div class="blog-mermaid" data-mermaid="sequenceDiagram%0A%20%20%20%20participant%20Timer%20as%20DispatchSourceTimer%0A%20%20%20%20participant%20Key%20as%20%E2%8C%98C%20Monitor%0A%20%20%20%20participant%20Check%20as%20checkForChanges()%0A%20%20%20%20participant%20PB%20as%20NSPasteboard%0A%20%20%20%20participant%20Filter%20as%20Skip%20Filters%0A%20%20%20%20participant%20Parse%20as%20Content%20Parser%0A%20%20%20%20participant%20IDE%20as%20IDEAnchorService%0A%20%20%20%20participant%20Store%20as%20DeckDataStore%0A%0A%20%20%20%20alt%20Timer%20fires%0A%20%20%20%20%20%20%20%20Timer-%3E%3ECheck%3A%20poll%20interval%20elapsed%0A%20%20%20%20else%20%E2%8C%98C%20%2F%20%E2%8C%98X%20detected%0A%20%20%20%20%20%20%20%20Key-%3E%3ECheck%3A%20after%2080ms%20delay%0A%20%20%20%20end%0A%0A%20%20%20%20Check-%3E%3ECheck%3A%20guard%20!isCheckingForChanges%20(re-entrancy%20lock)%0A%20%20%20%20Check-%3E%3EPB%3A%20read%20changeCount%0A%20%20%20%20PB--%3E%3ECheck%3A%20currentChangeCount%0A%0A%20%20%20%20alt%20changeCount%20unchanged%0A%20%20%20%20%20%20%20%20Check-%3E%3ECheck%3A%20adjustPollInterval(success%3A%20false)%20%E2%86%92%20interval%20%C3%97%201.5%0A%20%20%20%20else%20changeCount%20changed%0A%20%20%20%20%20%20%20%20Check-%3E%3EFilter%3A%20apply%20skip%20filters%0A%20%20%20%20%20%20%20%20Note%20over%20Filter%3A%20%E2%80%A2%20Deck's%20own%20writes%20(deckPasteboardType)%3Cbr%2F%3E%E2%80%A2%20Recently%20pasted%20content%3Cbr%2F%3E%E2%80%A2%20Sensitive%20%2F%20concealed%20items%3Cbr%2F%3E%E2%80%A2%20Ignored%20applications%0A%0A%20%20%20%20%20%20%20%20alt%20filtered%20out%0A%20%20%20%20%20%20%20%20%20%20%20%20Filter--%3E%3ECheck%3A%20skip%0A%20%20%20%20%20%20%20%20else%20passes%20filters%0A%20%20%20%20%20%20%20%20%20%20%20%20Check-%3E%3EParse%3A%20ClipboardItem(with%3Apasteboard%3A)%0A%20%20%20%20%20%20%20%20%20%20%20%20Note%20over%20Parse%3A%20type%20priority%20resolution%3Cbr%2F%3E%2B%20text%20fallback%20chain%3Cbr%2F%3E%2B%20Figma%20detection%3Cbr%2F%3E%2B%20OOM%20guards%0A%0A%20%20%20%20%20%20%20%20%20%20%20%20Parse--%3E%3ECheck%3A%20clipboardItem%0A%0A%20%20%20%20%20%20%20%20%20%20%20%20Check-%3E%3EIDE%3A%20captureAnchor(for%3A%20sourceApp)%0A%20%20%20%20%20%20%20%20%20%20%20%20IDE--%3E%3ECheck%3A%20SourceAnchor%3F%0A%0A%20%20%20%20%20%20%20%20%20%20%20%20Note%20over%20Check%3A%20optional%20post-processing%3A%3Cbr%2F%3Esteganography%20decode%2C%3Cbr%2F%3Esmart%20line-joining%2C%3Cbr%2F%3Elink%20preview%20prefetch%0A%0A%20%20%20%20%20%20%20%20%20%20%20%20Check-%3E%3EStore%3A%20addParsedItemWithRules(item)%0A%20%20%20%20%20%20%20%20%20%20%20%20Check-%3E%3ECheck%3A%20adjustPollInterval(success%3A%20true)%20%E2%86%92%20min%20interval%0A%20%20%20%20%20%20%20%20end%0A%20%20%20%20end"><pre class="mermaid-fallback"><code>sequenceDiagram
+    participant Timer as DispatchSourceTimer
+    participant Key as ⌘C Monitor
+    participant Check as checkForChanges()
+    participant PB as NSPasteboard
+    participant Filter as Skip Filters
+    participant Parse as Content Parser
+    participant IDE as IDEAnchorService
+    participant Store as DeckDataStore
+
+    alt Timer fires
+        Timer->>Check: poll interval elapsed
+    else ⌘C / ⌘X detected
+        Key->>Check: after 80ms delay
+    end
+
+    Check->>Check: guard !isCheckingForChanges (re-entrancy lock)
+    Check->>PB: read changeCount
+    PB-->>Check: currentChangeCount
+
+    alt changeCount unchanged
+        Check->>Check: adjustPollInterval(success: false) → interval × 1.5
+    else changeCount changed
+        Check->>Filter: apply skip filters
+        Note over Filter: • Deck's own writes (deckPasteboardType)<br/>• Recently pasted content<br/>• Sensitive / concealed items<br/>• Ignored applications
+
+        alt filtered out
+            Filter-->>Check: skip
+        else passes filters
+            Check->>Parse: ClipboardItem(with:pasteboard:)
+            Note over Parse: type priority resolution<br/>+ text fallback chain<br/>+ Figma detection<br/>+ OOM guards
+
+            Parse-->>Check: clipboardItem
+
+            Check->>IDE: captureAnchor(for: sourceApp)
+            IDE-->>Check: SourceAnchor?
+
+            Note over Check: optional post-processing:<br/>steganography decode,<br/>smart line-joining,<br/>link preview prefetch
+
+            Check->>Store: addParsedItemWithRules(item)
+            Check->>Check: adjustPollInterval(success: true) → min interval
+        end
+    end</code></pre></div><hr>
+<h2 id="wrapping-up">Wrapping Up</h2>
+<p>Most of these systems interact with each other. Thermal pressure changes the poll interval, which changes how quickly ⌘C interception matters. A Figma paste can carry 20+ pasteboard types, hitting both the content priority ladder and the OOM guards simultaneously. IDE anchor capture has to complete within the 80ms window before the next poll cycle overwrites the Accessibility state.</p>
+<p>There are areas we&#39;re still improving. The Accessibility API can be slow on certain apps (Electron-based editors with deep DOM trees), and we&#39;re experimenting with caching strategies to reduce AX query frequency. We&#39;re also looking into using <code>NSPasteboard</code> observation APIs if Apple exposes more event-driven hooks in future macOS versions, which could reduce polling overhead further.</p>
+<hr>
+<p><em>Deck is a macOS clipboard manager that keeps everything local. Learn more at <a href="https://deckclip.app">deckclip.app</a>.</em></p>
+0:{"buildId":"uj7zkHqCugl7M3KbKSjms","rsc":["$","$1","c",{"children":[[["$","script",null,{"type":"application/ld+json","dangerouslySetInnerHTML":{"__html":"{\"@context\":\"https://schema.org\",\"@type\":\"BlogPosting\",\"headline\":\"The Invisible Complexity of Clipboard Monitoring\",\"description\":\"From 0.5s to 15s — How Deck makes clipboard monitoring both responsive and power-efficient through adaptive polling, content parsing, OOM protection, and IDE integration.\",\"url\":\"https://deckclip.app/blog/clipboard-monitoring\",\"datePublished\":\"2026-03-06T00:00:00+00:00\",\"dateModified\":\"2026-03-06T00:00:00+00:00\",\"author\":{\"@type\":\"Organization\",\"name\":\"Deck\",\"url\":\"https://deckclip.app\"},\"publisher\":{\"@type\":\"Organization\",\"name\":\"Deck\",\"url\":\"https://deckclip.app\",\"logo\":{\"@type\":\"ImageObject\",\"url\":\"https://deckclip.app/Deck.jpeg\"}},\"mainEntityOfPage\":{\"@type\":\"WebPage\",\"@id\":\"https://deckclip.app/blog/clipboard-monitoring\"},\"image\":\"https://deckclip.app/Deck.jpeg\",\"keywords\":\"macOS, System, Performance\",\"timeRequired\":\"PT7M\",\"inLanguage\":\"en\",\"isAccessibleForFree\":true}"}}],["$","script",null,{"type":"application/ld+json","dangerouslySetInnerHTML":{"__html":"{\"@context\":\"https://schema.org\",\"@type\":\"BreadcrumbList\",\"itemListElement\":[{\"@type\":\"ListItem\",\"position\":1,\"name\":\"Home\",\"item\":\"https://deckclip.app\"},{\"@type\":\"ListItem\",\"position\":2,\"name\":\"Blog\",\"item\":\"https://deckclip.app/blog\"},{\"@type\":\"ListItem\",\"position\":3,\"name\":\"The Invisible Complexity of Clipboard Monitoring\",\"item\":\"https://deckclip.app/blog/clipboard-monitoring\"}]}"}}],["$","$L2",null,{"post":{"slug":"clipboard-monitoring","title":"The Invisible Complexity of Clipboard Monitoring","date":"2026-03-06","summary":"From 0.5s to 15s — How Deck makes clipboard monitoring both responsive and power-efficient through adaptive polling, content parsing, OOM protection, and IDE integration.","tags":["macOS","System","Performance"],"html":"$3","readingTime":7},"toc":[{"depth":2,"id":"1-adaptive-polling-doing-less-when-it-matters","text":"1. Adaptive Polling: Doing Less When It Matters"},{"depth":3,"id":"the-bounds","text":"The Bounds"},{"depth":3,"id":"timer-architecture","text":"Timer Architecture"},{"depth":3,"id":"power-state-awareness","text":"Power State Awareness"},{"depth":2,"id":"2-c-interception-bypassing-the-poll-cycle","text":"2. ⌘C Interception: Bypassing the Poll Cycle"},{"depth":2,"id":"3-content-type-resolution-the-priority-ladder","text":"3. Content Type Resolution: The Priority Ladder"},{"depth":3,"id":"the-three-level-text-fallback-chain","text":"The Three-Level Text Fallback Chain"},{"depth":2,"id":"4-oom-protection-defending-against-the-200-mb-screenshot","text":"4. OOM Protection: Defending Against the 200 MB Screenshot"},{"depth":2,"id":"5-ide-source-anchor-tracking-know-where-it-came-from","text":"5. IDE Source Anchor Tracking: Know Where It Came From"},{"depth":3,"id":"supported-ides","text":"Supported IDEs"},{"depth":3,"id":"how-it-works","text":"How It Works"},{"depth":3,"id":"jump-back","text":"Jump Back"},{"depth":2,"id":"6-figma-clipboard-detection","text":"6. Figma Clipboard Detection"},{"depth":2,"id":"7-the-full-monitoring-loop","text":"7. The Full Monitoring Loop"},{"depth":2,"id":"wrapping-up","text":"Wrapping Up"}]}]],["$L4","$L5"],"$L6"]}],"loading":null,"isPartial":false}
+4:["$","script","script-0",{"src":"/_next/static/chunks/63d601ccd18bb55a.js","async":true}]
+5:["$","script","script-1",{"src":"/_next/static/chunks/23f147fec4f52e6e.js","async":true}]
+6:["$","$L7",null,{"children":["$","$8",null,{"name":"Next.MetadataOutlet","children":"$@9"}]}]
+9:null
