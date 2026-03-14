@@ -1,0 +1,327 @@
+1:"$Sreact.fragment"
+2:I[98407,["/_next/static/chunks/0326615652f30df1.js","/_next/static/chunks/31de6e89f09f52e0.js","/_next/static/chunks/4b102567a2bb1c91.js","/_next/static/chunks/63d601ccd18bb55a.js","/_next/static/chunks/b34dcf7bacfe8b19.js"],"BlogPostPage"]
+8:I[97367,["/_next/static/chunks/ff1a16fafef87110.js","/_next/static/chunks/6153d1a363729c2c.js"],"OutletBoundary"]
+9:"$Sreact.suspense"
+:HL["/_next/static/chunks/afdd98b8a478f0f3.css","style"]
+3:T7241,<p><strong>从 0.5 秒到 15 秒——Deck 如何让剪贴板监控既灵敏又省电</strong></p>
+<hr>
+<p>macOS 上剪贴板监控的核心很直白：用定时器轮询 <code>NSPasteboard.general.changeCount</code>，数值变了就读新内容。一个周末原型就能跑起来。</p>
+<p>但一个每天运行 10 小时以上的剪贴板管理器，得处理原型完全忽略的问题——持续轮询的电池消耗、200 MB 截图引发的内存爆炸、Figma 的非标准剪贴板格式、以及跨五种编辑器家族的 IDE 源码追踪。本文介绍 Deck 如何处理这些问题：自适应轮询、内容类型解析、OOM 防护、IDE 集成，以及 Figma 剪贴板检测。</p>
+<hr>
+<h2 id="1-自适应轮询-做最少的事">1. 自适应轮询：做最少的事</h2>
+<p>最朴素的做法是固定间隔定时器——比如每 0.5 秒一次。响应是快了，但一小时 7200 次唤醒，笔记本在用电池的时候根本受不了。</p>
+<p>Deck 的方案是一套<strong>自适应轮询机制</strong>，根据三个信号动态调节间隔：用户活动状态、电源状态和系统热压力。</p>
+<h3 id="边界常量">边界常量</h3>
+<div class="table-wrapper"><table>
+<thead>
+<tr>
+<th>Constant</th>
+<th>Value</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>minInterval</code></td>
+<td>0.5s</td>
+<td>Fastest poll rate (active use) / 最快轮询间隔（活跃使用时）</td>
+</tr>
+<tr>
+<td><code>maxInterval</code></td>
+<td>2.0s</td>
+<td>Normal ceiling / 正常最大间隔</td>
+</tr>
+<tr>
+<td><code>idleSecondsThreshold</code></td>
+<td>8.0s</td>
+<td>Idle detection threshold / 用户空闲判定阈值</td>
+</tr>
+<tr>
+<td><code>idleMaxInterval</code></td>
+<td>15.0s</td>
+<td>Ceiling when user is idle / 空闲时最大间隔</td>
+</tr>
+<tr>
+<td><code>thermalMaxInterval</code></td>
+<td>10.0s</td>
+<td>Ceiling under thermal pressure / 热状态下最大间隔</td>
+</tr>
+<tr>
+<td><code>pollBoundsCacheTTL</code></td>
+<td>1.0s</td>
+<td>Cache TTL for computed bounds / 轮询边界缓存有效期</td>
+</tr>
+</tbody></table></div>
+<p>核心函数 <code>effectivePollBounds()</code> 通过叠加这些条件来计算当前的最小/最大间隔：</p>
+<div class="code-block-wrapper"><button class="copy-btn" aria-label="Copy code"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg></button><div class="code-lang-label">swift</div><pre><code class="hljs language-swift"><span class="hljs-keyword">func</span> <span class="hljs-title function_">effectivePollBounds</span>() -&gt; (min: <span class="hljs-type">TimeInterval</span>, max: <span class="hljs-type">TimeInterval</span>) {
+    <span class="hljs-keyword">var</span> effectiveMin <span class="hljs-operator">=</span> minInterval  <span class="hljs-comment">// 0.5s</span>
+    <span class="hljs-keyword">var</span> effectiveMax <span class="hljs-operator">=</span> maxInterval  <span class="hljs-comment">// 2.0s</span>
+
+    <span class="hljs-comment">// Low Power Mode: widen the interval significantly</span>
+    <span class="hljs-keyword">if</span> <span class="hljs-type">ProcessInfo</span>.processInfo.isLowPowerModeEnabled {
+        effectiveMin <span class="hljs-operator">=</span> <span class="hljs-built_in">min</span>(effectiveMin <span class="hljs-operator">*</span> <span class="hljs-number">2.0</span>, <span class="hljs-number">2.0</span>)
+        effectiveMax <span class="hljs-operator">=</span> <span class="hljs-built_in">max</span>(effectiveMax <span class="hljs-operator">*</span> <span class="hljs-number">4.0</span>, <span class="hljs-number">8.0</span>)
+    }
+
+    <span class="hljs-comment">// Thermal pressure: back off further</span>
+    <span class="hljs-keyword">if</span> thermalState <span class="hljs-operator">==</span> .serious <span class="hljs-operator">||</span> thermalState <span class="hljs-operator">==</span> .critical {
+        effectiveMin <span class="hljs-operator">=</span> <span class="hljs-built_in">max</span>(effectiveMin, <span class="hljs-number">1.0</span>)
+        effectiveMax <span class="hljs-operator">=</span> <span class="hljs-built_in">max</span>(effectiveMax, thermalMaxInterval) <span class="hljs-comment">// 10s</span>
+    }
+
+    <span class="hljs-comment">// User idle: stretch the max</span>
+    <span class="hljs-keyword">if</span> secondsSinceUserInteraction() <span class="hljs-operator">&gt;</span> idleSecondsThreshold {
+        effectiveMax <span class="hljs-operator">=</span> <span class="hljs-built_in">max</span>(effectiveMax, idleMaxInterval) <span class="hljs-comment">// 15s</span>
+    }
+
+    <span class="hljs-keyword">return</span> (effectiveMin, effectiveMax)
+}</code></pre></div><p>当剪贴板发生变化时，间隔立即回到 <code>min</code>。无变化时，每次轮询后间隔乘以 1.5 倍退避，直到达到 <code>max</code>。因此用户频繁复制时，轮询间隔保持在 0.5 秒；8 秒无操作后，逐步拉长到 15 秒。</p>
+<div class="code-block-wrapper"><button class="copy-btn" aria-label="Copy code"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg></button><div class="code-lang-label">swift</div><pre><code class="hljs language-swift"><span class="hljs-keyword">func</span> <span class="hljs-title function_">adjustPollInterval</span>(<span class="hljs-params">success</span>: <span class="hljs-type">Bool</span>) {
+    <span class="hljs-keyword">let</span> bounds <span class="hljs-operator">=</span> effectivePollBounds()
+    <span class="hljs-keyword">if</span> success {
+        pollInterval <span class="hljs-operator">=</span> bounds.min
+    } <span class="hljs-keyword">else</span> {
+        pollInterval <span class="hljs-operator">=</span> <span class="hljs-built_in">min</span>(pollInterval <span class="hljs-operator">*</span> <span class="hljs-number">1.5</span>, bounds.max)
+    }
+}</code></pre></div><h3 id="定时器架构">定时器架构</h3>
+<p>定时器运行在一个专用的 <code>DispatchQueue</code>（<code>.utility</code> 优先级），不在主线程上：</p>
+<div class="code-block-wrapper"><button class="copy-btn" aria-label="Copy code"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg></button><div class="code-lang-label">swift</div><pre><code class="hljs language-swift"><span class="hljs-keyword">let</span> pollQueue <span class="hljs-operator">=</span> <span class="hljs-type">DispatchQueue</span>(label: <span class="hljs-string">&quot;deck.clipboard.poll&quot;</span>, qos: .utility)
+<span class="hljs-keyword">let</span> pollTimer <span class="hljs-operator">=</span> <span class="hljs-type">DispatchSource</span>.makeTimerSource(queue: pollQueue)</code></pre></div><p>定时器设置了 25% 的 leeway（限制在 50–500ms 范围内），让 macOS 可以将定时器唤醒与其他系统定时器合并，在使用电池时能明显减少实际唤醒频率。</p>
+<h3 id="电源状态感知">电源状态感知</h3>
+<p>Deck 监听 <code>NSProcessInfoPowerStateDidChange</code> 通知来检测低功耗模式的切换。除了调整轮询间隔，还会节制下游任务——比如在低功耗模式下，链接预览不再拉取图片：</p>
+<div class="code-block-wrapper"><button class="copy-btn" aria-label="Copy code"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg></button><div class="code-lang-label">swift</div><pre><code class="hljs language-swift"><span class="hljs-keyword">let</span> includeImage <span class="hljs-operator">=</span> <span class="hljs-operator">!</span><span class="hljs-type">ProcessInfo</span>.processInfo.isLowPowerModeEnabled
+<span class="hljs-type">LinkMetadataService</span>.shared.prefetch(for: url, includeImage: includeImage)</code></pre></div><hr>
+<h2 id="2-c-拦截-跳过轮询周期">2. ⌘C 拦截：跳过轮询周期</h2>
+<p>轮询本质上是被动的。即使 0.5 秒的间隔，也有体感上的延迟。Deck 通过<strong>全局拦截 ⌘C/⌘X</strong> 来消除这种延迟，在用户按键的瞬间就触发剪贴板检测。</p>
+<div class="code-block-wrapper"><button class="copy-btn" aria-label="Copy code"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg></button><div class="code-lang-label">swift</div><pre><code class="hljs language-swift"><span class="hljs-keyword">func</span> <span class="hljs-title function_">installCopyMonitor</span>() {
+    <span class="hljs-type">NSEvent</span>.addGlobalMonitorForEvents(matching: .keyDown) { event <span class="hljs-keyword">in</span>
+        <span class="hljs-keyword">guard</span> event.modifierFlags.contains(.command) <span class="hljs-keyword">else</span> { <span class="hljs-keyword">return</span> }
+        <span class="hljs-keyword">let</span> keyCode <span class="hljs-operator">=</span> event.keyCode
+        <span class="hljs-comment">// 0x08 = C, 0x07 = X</span>
+        <span class="hljs-keyword">guard</span> keyCode <span class="hljs-operator">==</span> <span class="hljs-number">0x08</span> <span class="hljs-operator">||</span> keyCode <span class="hljs-operator">==</span> <span class="hljs-number">0x07</span> <span class="hljs-keyword">else</span> { <span class="hljs-keyword">return</span> }
+
+        <span class="hljs-keyword">self</span>.pendingCopyCheck<span class="hljs-operator">?</span>.cancel()
+        <span class="hljs-keyword">self</span>.pendingCopyCheck <span class="hljs-operator">=</span> <span class="hljs-type">Task</span> {
+            <span class="hljs-keyword">try?</span> <span class="hljs-keyword">await</span> <span class="hljs-type">Task</span>.sleep(nanoseconds: <span class="hljs-number">80_000_000</span>) <span class="hljs-comment">// 80ms</span>
+            <span class="hljs-keyword">await</span> <span class="hljs-keyword">self</span>.checkForChanges()
+        }
+    }
+}</code></pre></div><p>80ms 的延迟是刻意设计的：来源应用需要一小段时间才能真正把数据写入 <code>NSPasteboard</code>。取消-重新调度的模式确保用户快速连按 ⌘C 时不会产生冗余检测。</p>
+<hr>
+<h2 id="3-内容类型解析-优先级阶梯">3. 内容类型解析：优先级阶梯</h2>
+<p><code>NSPasteboard</code> 不是一个只装一个值的容器。一次复制操作可能同时存入几十种表示形式——PNG、TIFF、RTF、HTML、纯文本、应用私有类型——剪贴板管理器必须从中挑出最有意义的一种。</p>
+<p>Deck 定义了明确的优先级顺序：</p>
+<div class="code-block-wrapper"><button class="copy-btn" aria-label="Copy code"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg></button><div class="code-lang-label">swift</div><pre><code class="hljs language-swift"><span class="hljs-comment">// PasteboardType.supportedTypes (highest → lowest)</span>
+.png, .tiff, .jpeg, .heic, .heif, .gif, .webp, .bmp,  <span class="hljs-comment">// Images</span>
+.rtfd, .flatRTFD, .rtf,                                  <span class="hljs-comment">// Rich text</span>
+.fileURL,                                                 <span class="hljs-comment">// Files</span>
+.publicURL,                                               <span class="hljs-comment">// URLs</span>
+.string                                                   <span class="hljs-comment">// Plain text</span></code></pre></div><p>图片拥有最高优先级，因为它们信息密度最高且最难重建。纯文本在最底层——它几乎总是可以作为兜底项。</p>
+<h3 id="三级文本回退链">三级文本回退链</h3>
+<p>当主类型无法解析时，Deck 不会放弃。它会走一条三级回退链：</p>
+<p>优先检测 HTML 内容或 Figma 标记。
+2. <strong><code>resolveUTF16PlainText()</code></strong> — 尝试 <code>public.utf16-external-plain-text</code>，然后 <code>public.utf16-plain-text</code>。
+遍历所有符合 <code>UTType.text</code> 的类型。</p>
+<p>一个包含约 20 种类型的排除列表（包括 <code>.string</code>、<code>.rtf</code>、<code>.html</code>、<code>.pdf</code>、各种 WebKit/Chromium 内部类型和 macOS 系统类型）防止回退链重复处理已经尝试过的或已知无意义的类型。</p>
+<p>一个实用优化：当 RTFD 条目同时携带纯文本表示时，Deck 优先使用纯文本——在内容本质上是文本时避免 RTFD 解码的开销。</p>
+<hr>
+<h2 id="4-oom-防护-抵御-200-mb-截图">4. OOM 防护：抵御 200 MB 截图</h2>
+<p>一个在复制大图时崩溃的剪贴板管理器，比没有剪贴板管理器还糟糕。Deck 实现了<strong>多层 OOM 防护</strong>，设置了逐级递增的阈值：</p>
+<div class="table-wrapper"><table>
+<thead>
+<tr>
+<th>Threshold</th>
+<th>Value</th>
+<th>What it guards</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>maxPerTypeBytes</code></td>
+<td>1 MB</td>
+<td>Per-type snapshot cap / 单类型快照上限</td>
+</tr>
+<tr>
+<td><code>maxSnapshotBytes</code></td>
+<td>4 MB</td>
+<td>Total snapshot byte limit / 粘贴快照总字节上限</td>
+</tr>
+<tr>
+<td><code>maxInlineImagePasteBytes</code></td>
+<td>25 MB</td>
+<td>Beyond this, skip inline image bytes if file URL exists / 超过此值且有文件 URL 时不写入图片字节</td>
+</tr>
+<tr>
+<td><code>largeBlobThreshold</code></td>
+<td>512 KB</td>
+<td>Data above this is stored as a separate blob file / 超过此值存为独立 Blob 文件</td>
+</tr>
+<tr>
+<td><code>maxImageDataSize</code></td>
+<td>100 MB</td>
+<td>Images above this are never loaded directly / 超过此值的图片不直接加载</td>
+</tr>
+</tbody></table></div>
+<p>512 KB 的 Blob 阈值特别值得一提。Deck 不将大数据内联存储在 SQLite 中，而是通过 <code>BlobStorage.shared.storeAsync</code> 异步写入独立文件，数据库中只存路径。这保持了数据库的精简，防止大 BLOB 造成 SQLite 页碎片。</p>
+<p>对于超过 100 MB 的图片，<code>resolvedData()</code> 直接返回 <code>nil</code>——图片太大，不适合放在内存中。在显示时，<code>thumbnail()</code> 使用 <code>CGImageSourceCreateThumbnailAtIndex</code> 通过渐进解码生成缩略图，从不加载完整位图：</p>
+<div class="code-block-wrapper"><button class="copy-btn" aria-label="Copy code"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg></button><div class="code-lang-label">swift</div><pre><code class="hljs language-swift"><span class="hljs-keyword">func</span> <span class="hljs-title function_">generateSafeThumbnailFromData</span>(<span class="hljs-keyword">_</span> <span class="hljs-params">data</span>: <span class="hljs-type">Data</span>, <span class="hljs-params">maxDimension</span>: <span class="hljs-type">CGFloat</span>) -&gt; <span class="hljs-type">NSImage</span>? {
+    <span class="hljs-keyword">let</span> options: [<span class="hljs-type">CFString</span>: <span class="hljs-keyword">Any</span>] <span class="hljs-operator">=</span> [
+        kCGImageSourceCreateThumbnailFromImageAlways: <span class="hljs-literal">true</span>,
+        kCGImageSourceThumbnailMaxPixelSize: maxDimension,
+        kCGImageSourceCreateThumbnailWithTransform: <span class="hljs-literal">true</span>,
+        kCGImageSourceShouldCacheImmediately: <span class="hljs-literal">false</span>
+    ]
+    <span class="hljs-keyword">guard</span> <span class="hljs-keyword">let</span> source <span class="hljs-operator">=</span> <span class="hljs-type">CGImageSourceCreateWithData</span>(data <span class="hljs-keyword">as</span> <span class="hljs-type">CFData</span>, <span class="hljs-literal">nil</span>),
+          <span class="hljs-keyword">let</span> thumbnail <span class="hljs-operator">=</span> <span class="hljs-type">CGImageSourceCreateThumbnailAtIndex</span>(source, <span class="hljs-number">0</span>, options <span class="hljs-keyword">as</span> <span class="hljs-type">CFDictionary</span>)
+    <span class="hljs-keyword">else</span> { <span class="hljs-keyword">return</span> <span class="hljs-literal">nil</span> }
+    <span class="hljs-keyword">return</span> <span class="hljs-type">NSImage</span>(cgImage: thumbnail, size: .zero)
+}</code></pre></div><hr>
+<h2 id="5-ide-源码定位追踪-知道代码从哪来">5. IDE 源码定位追踪：知道代码从哪来</h2>
+<p>场景举例：你 20 分钟前从 VS Code 里复制了一段代码。现在要粘贴，但也想跳回当时复制的位置。</p>
+<p>Deck 在复制时捕获一个 <strong><code>SourceAnchor</code></strong>——文件路径、行号、列号和 IDE 身份——让你一键就能跳回去。</p>
+<div class="code-block-wrapper"><button class="copy-btn" aria-label="Copy code"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg></button><div class="code-lang-label">swift</div><pre><code class="hljs language-swift"><span class="hljs-keyword">struct</span> <span class="hljs-title class_">SourceAnchor</span> {
+    <span class="hljs-keyword">var</span> ide: <span class="hljs-type">IDEKind</span>
+    <span class="hljs-keyword">var</span> filePath: <span class="hljs-type">String</span>
+    <span class="hljs-keyword">var</span> line: <span class="hljs-type">Int</span>?
+    <span class="hljs-keyword">var</span> column: <span class="hljs-type">Int</span>?
+    <span class="hljs-keyword">var</span> sourceBundleId: <span class="hljs-type">String</span>?
+    <span class="hljs-keyword">var</span> captureMethod: <span class="hljs-type">String</span>?
+    <span class="hljs-keyword">var</span> capturedAt: <span class="hljs-type">Int64</span>?
+    <span class="hljs-keyword">var</span> openHint: <span class="hljs-type">IDEOpenHint</span>?
+}</code></pre></div><h3 id="支持的-ide">支持的 IDE</h3>
+<div class="table-wrapper"><table>
+<thead>
+<tr>
+<th>IDE</th>
+<th>Bundle ID(s)</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>VS Code</td>
+<td><code>com.microsoft.VSCode</code>, <code>com.microsoft.VSCodeInsiders</code></td>
+</tr>
+<tr>
+<td>Cursor</td>
+<td><code>com.todesktop.230313mzl4w4u92</code>, <code>com.anysphere.cursor</code>, <code>com.cursor.Cursor</code></td>
+</tr>
+<tr>
+<td>Windsurf</td>
+<td><code>com.exafunction.windsurf</code></td>
+</tr>
+<tr>
+<td>Xcode</td>
+<td><code>com.apple.dt.Xcode</code></td>
+</tr>
+<tr>
+<td>JetBrains IDEs</td>
+<td><code>com.jetbrains.*</code></td>
+</tr>
+</tbody></table></div>
+<h3 id="工作原理">工作原理</h3>
+<p>来源识别从 <code>org.nspasteboard.source</code> 开始——一种某些应用（尤其是 IDE 相关工具）会写入的粘贴板类型。如果没有，Deck 退回使用 <code>sourceApp.bundleIdentifier</code>。</p>
+<p>文件路径和光标位置来自 <strong>macOS 辅助功能 API</strong>。Deck 查询当前焦点 UI 元素的以下属性：</p>
+<ul>
+<li><code>kAXDocumentAttribute</code> / <code>kAXFilenameAttribute</code> / <code>kAXURLAttribute</code> → file path / 文件路径
+光标行号
+选区起始行
+列号计算</li>
+</ul>
+<p>不同 IDE 的辅助功能树深度不同，因此 Deck 使用针对性调整的搜索预算：</p>
+<div class="table-wrapper"><table>
+<thead>
+<tr>
+<th>IDE Family</th>
+<th><code>maxDepth</code></th>
+<th><code>maxNodes</code></th>
+</tr>
+</thead>
+<tbody><tr>
+<td>VS Code / Cursor / Windsurf</td>
+<td>8</td>
+<td>2000</td>
+</tr>
+<tr>
+<td>Xcode / JetBrains</td>
+<td>4</td>
+<td>200</td>
+</tr>
+</tbody></table></div>
+<h3 id="回跳方式">回跳方式</h3>
+<p>每个 IDE 系列都有各自的&quot;打开文件到指定行&quot;的方式：</p>
+<hr>
+<h2 id="6-figma-剪贴板检测">6. Figma 剪贴板检测</h2>
+<p>Figma 作为基于 Chromium 的桌面应用，其剪贴板行为也带有 Chromium 特征。当你在 Figma 中复制一个画框或组件时，粘贴板收到的看起来是标准 HTML——但其中嵌入了用自定义 <code>(figma)</code> / <code>(figmeta)</code> 标记包裹的 base64 编码设计数据。大多数剪贴板管理器会把它当作普通 HTML 或纯文本处理，直接丢弃 Figma 专有数据。再粘贴回去时，设计结构就没了——得到的是扁平图片或乱码文本，而不是原来可编辑的组件。</p>
+<p>Deck 通过 <code>containsFigmaMarker(in:)</code> 检测 Figma 内容，扫描 HTML 中的这些标记。一旦检测到，启动多步提取流程：</p>
+<p>入口，仅对未识别类型执行。
+2. <strong><code>extractFigmaPayload()</code></strong> — 从 <code>UnsupportedPasteboardPayload.items</code> 中搜索 Figma HTML。
+需要时回退到 plist 解析。
+从 HTML 中提取 <code>(figma)</code> 和 <code>(figmeta)</code> 的 base64 数据。</p>
+<p>提取出的元数据结构为：</p>
+<div class="code-block-wrapper"><button class="copy-btn" aria-label="Copy code"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg></button><div class="code-lang-label">swift</div><pre><code class="hljs language-swift"><span class="hljs-keyword">struct</span> <span class="hljs-title class_">FigmaClipboardMeta</span> {
+    <span class="hljs-keyword">var</span> fileKey: <span class="hljs-type">String</span>
+    <span class="hljs-keyword">var</span> pasteID: <span class="hljs-type">String</span>
+    <span class="hljs-keyword">var</span> dataType: <span class="hljs-type">String</span>
+}
+
+<span class="hljs-keyword">struct</span> <span class="hljs-title class_">FigmaClipboardPayload</span> {
+    <span class="hljs-keyword">var</span> html: <span class="hljs-type">String</span>
+    <span class="hljs-keyword">var</span> figmaBase64: <span class="hljs-type">String</span>
+    <span class="hljs-keyword">var</span> figmetaBase64: <span class="hljs-type">String</span>
+    <span class="hljs-keyword">var</span> meta: <span class="hljs-type">FigmaClipboardMeta</span>
+    <span class="hljs-keyword">var</span> sourceURL: <span class="hljs-type">String</span>?  <span class="hljs-comment">// from org.chromium.source-url</span>
+}</code></pre></div><p>一个关键的设计决策：一旦检测到 Figma 内容，Deck <strong>完全跳过文本回退链</strong>。完整保留 Figma 的结构化数据，而不是将其展平为会丢失所有设计语义的纯文本。</p>
+<hr>
+<h2 id="7-完整监控循环">7. 完整监控循环</h2>
+<p>把所有部分组合起来，每次剪贴板检测的完整流程如下：</p>
+<div class="blog-mermaid" data-mermaid="sequenceDiagram%0A%20%20%20%20participant%20Timer%20as%20DispatchSourceTimer%0A%20%20%20%20participant%20Key%20as%20%E2%8C%98C%20Monitor%0A%20%20%20%20participant%20Check%20as%20checkForChanges()%0A%20%20%20%20participant%20PB%20as%20NSPasteboard%0A%20%20%20%20participant%20Filter%20as%20Skip%20Filters%0A%20%20%20%20participant%20Parse%20as%20Content%20Parser%0A%20%20%20%20participant%20IDE%20as%20IDEAnchorService%0A%20%20%20%20participant%20Store%20as%20DeckDataStore%0A%0A%20%20%20%20alt%20Timer%20fires%0A%20%20%20%20%20%20%20%20Timer-%3E%3ECheck%3A%20poll%20interval%20elapsed%0A%20%20%20%20else%20%E2%8C%98C%20%2F%20%E2%8C%98X%20detected%0A%20%20%20%20%20%20%20%20Key-%3E%3ECheck%3A%20after%2080ms%20delay%0A%20%20%20%20end%0A%0A%20%20%20%20Check-%3E%3ECheck%3A%20guard%20!isCheckingForChanges%20(re-entrancy%20lock)%0A%20%20%20%20Check-%3E%3EPB%3A%20read%20changeCount%0A%20%20%20%20PB--%3E%3ECheck%3A%20currentChangeCount%0A%0A%20%20%20%20alt%20changeCount%20unchanged%0A%20%20%20%20%20%20%20%20Check-%3E%3ECheck%3A%20adjustPollInterval(success%3A%20false)%20%E2%86%92%20interval%20%C3%97%201.5%0A%20%20%20%20else%20changeCount%20changed%0A%20%20%20%20%20%20%20%20Check-%3E%3EFilter%3A%20apply%20skip%20filters%0A%20%20%20%20%20%20%20%20Note%20over%20Filter%3A%20%E2%80%A2%20Deck's%20own%20writes%20(deckPasteboardType)%3Cbr%2F%3E%E2%80%A2%20Recently%20pasted%20content%3Cbr%2F%3E%E2%80%A2%20Sensitive%20%2F%20concealed%20items%3Cbr%2F%3E%E2%80%A2%20Ignored%20applications%0A%0A%20%20%20%20%20%20%20%20alt%20filtered%20out%0A%20%20%20%20%20%20%20%20%20%20%20%20Filter--%3E%3ECheck%3A%20skip%0A%20%20%20%20%20%20%20%20else%20passes%20filters%0A%20%20%20%20%20%20%20%20%20%20%20%20Check-%3E%3EParse%3A%20ClipboardItem(with%3Apasteboard%3A)%0A%20%20%20%20%20%20%20%20%20%20%20%20Note%20over%20Parse%3A%20type%20priority%20resolution%3Cbr%2F%3E%2B%20text%20fallback%20chain%3Cbr%2F%3E%2B%20Figma%20detection%3Cbr%2F%3E%2B%20OOM%20guards%0A%0A%20%20%20%20%20%20%20%20%20%20%20%20Parse--%3E%3ECheck%3A%20clipboardItem%0A%0A%20%20%20%20%20%20%20%20%20%20%20%20Check-%3E%3EIDE%3A%20captureAnchor(for%3A%20sourceApp)%0A%20%20%20%20%20%20%20%20%20%20%20%20IDE--%3E%3ECheck%3A%20SourceAnchor%3F%0A%0A%20%20%20%20%20%20%20%20%20%20%20%20Note%20over%20Check%3A%20optional%20post-processing%3A%3Cbr%2F%3Esteganography%20decode%2C%3Cbr%2F%3Esmart%20line-joining%2C%3Cbr%2F%3Elink%20preview%20prefetch%0A%0A%20%20%20%20%20%20%20%20%20%20%20%20Check-%3E%3EStore%3A%20addParsedItemWithRules(item)%0A%20%20%20%20%20%20%20%20%20%20%20%20Check-%3E%3ECheck%3A%20adjustPollInterval(success%3A%20true)%20%E2%86%92%20min%20interval%0A%20%20%20%20%20%20%20%20end%0A%20%20%20%20end"><pre class="mermaid-fallback"><code>sequenceDiagram
+    participant Timer as DispatchSourceTimer
+    participant Key as ⌘C Monitor
+    participant Check as checkForChanges()
+    participant PB as NSPasteboard
+    participant Filter as Skip Filters
+    participant Parse as Content Parser
+    participant IDE as IDEAnchorService
+    participant Store as DeckDataStore
+
+    alt Timer fires
+        Timer->>Check: poll interval elapsed
+    else ⌘C / ⌘X detected
+        Key->>Check: after 80ms delay
+    end
+
+    Check->>Check: guard !isCheckingForChanges (re-entrancy lock)
+    Check->>PB: read changeCount
+    PB-->>Check: currentChangeCount
+
+    alt changeCount unchanged
+        Check->>Check: adjustPollInterval(success: false) → interval × 1.5
+    else changeCount changed
+        Check->>Filter: apply skip filters
+        Note over Filter: • Deck's own writes (deckPasteboardType)<br/>• Recently pasted content<br/>• Sensitive / concealed items<br/>• Ignored applications
+
+        alt filtered out
+            Filter-->>Check: skip
+        else passes filters
+            Check->>Parse: ClipboardItem(with:pasteboard:)
+            Note over Parse: type priority resolution<br/>+ text fallback chain<br/>+ Figma detection<br/>+ OOM guards
+
+            Parse-->>Check: clipboardItem
+
+            Check->>IDE: captureAnchor(for: sourceApp)
+            IDE-->>Check: SourceAnchor?
+
+            Note over Check: optional post-processing:<br/>steganography decode,<br/>smart line-joining,<br/>link preview prefetch
+
+            Check->>Store: addParsedItemWithRules(item)
+            Check->>Check: adjustPollInterval(success: true) → min interval
+        end
+    end</code></pre></div><hr>
+<h2 id="结语">结语</h2>
+<p>这些系统之间大多相互关联。热压力改变轮询间隔，进而影响 ⌘C 拦截的时效性。一次 Figma 粘贴可能携带 20 多种粘贴板类型，同时触发内容优先级阶梯和 OOM 防护。IDE 锚点捕获必须在 80ms 窗口内完成，否则下一次轮询周期会覆盖辅助功能状态。</p>
+<p>还有一些我们仍在优化的方向。辅助功能 API 在某些应用上可能较慢（特别是 DOM 树很深的 Electron 编辑器），我们正在试验缓存策略来减少 AX 查询频率。我们也在关注 Apple 是否会在未来的 macOS 版本中提供更多事件驱动的 <code>NSPasteboard</code> 监听 API，这将进一步减少轮询开销。</p>
+<hr>
+<p><em>Deck 是一款一切留在本地的 macOS 剪贴板管理器。了解更多：<a href="https://deckclip.app">deckclip.app</a>。</em></p>
+0:{"buildId":"vT8XKXU1HCuhRLLcpihKf","rsc":["$","$1","c",{"children":[[["$","script",null,{"type":"application/ld+json","dangerouslySetInnerHTML":{"__html":"{\"@context\":\"https://schema.org\",\"@type\":\"BlogPosting\",\"headline\":\"剪贴板监控背后的复杂度\",\"description\":\"从 0.5 秒到 15 秒——Deck 如何通过自适应轮询、内容类型解析、OOM 防护和 IDE 集成让剪贴板监控既灵敏又省电。\",\"url\":\"https://deckclip.app/zh-cn/blog/clipboard-monitoring\",\"datePublished\":\"2026-03-06T00:00:00+00:00\",\"dateModified\":\"2026-03-06T00:00:00+00:00\",\"author\":{\"@type\":\"Organization\",\"name\":\"Deck\",\"url\":\"https://deckclip.app\"},\"publisher\":{\"@type\":\"Organization\",\"name\":\"Deck\",\"url\":\"https://deckclip.app\",\"logo\":{\"@type\":\"ImageObject\",\"url\":\"https://deckclip.app/Deck.webp\"}},\"mainEntityOfPage\":{\"@type\":\"WebPage\",\"@id\":\"https://deckclip.app/zh-cn/blog/clipboard-monitoring\"},\"image\":\"https://deckclip.app/Deck.webp\",\"keywords\":\"macOS, System, Performance\",\"timeRequired\":\"PT6M\",\"inLanguage\":\"zh-CN\",\"isAccessibleForFree\":true}"}}],["$","script",null,{"type":"application/ld+json","dangerouslySetInnerHTML":{"__html":"{\"@context\":\"https://schema.org\",\"@type\":\"BreadcrumbList\",\"itemListElement\":[{\"@type\":\"ListItem\",\"position\":1,\"name\":\"首页\",\"item\":\"https://deckclip.app/zh-cn\"},{\"@type\":\"ListItem\",\"position\":2,\"name\":\"博客\",\"item\":\"https://deckclip.app/zh-cn/blog\"},{\"@type\":\"ListItem\",\"position\":3,\"name\":\"剪贴板监控背后的复杂度\",\"item\":\"https://deckclip.app/zh-cn/blog/clipboard-monitoring\"}]}"}}],["$","$L2",null,{"post":{"slug":"clipboard-monitoring","title":"剪贴板监控背后的复杂度","date":"2026-03-06","summary":"从 0.5 秒到 15 秒——Deck 如何通过自适应轮询、内容类型解析、OOM 防护和 IDE 集成让剪贴板监控既灵敏又省电。","tags":["macOS","System","Performance"],"html":"$3","readingTime":6},"toc":[{"depth":2,"id":"1-自适应轮询-做最少的事","text":"1. 自适应轮询：做最少的事"},{"depth":3,"id":"边界常量","text":"边界常量"},{"depth":3,"id":"定时器架构","text":"定时器架构"},{"depth":3,"id":"电源状态感知","text":"电源状态感知"},{"depth":2,"id":"2-c-拦截-跳过轮询周期","text":"2. ⌘C 拦截：跳过轮询周期"},{"depth":2,"id":"3-内容类型解析-优先级阶梯","text":"3. 内容类型解析：优先级阶梯"},{"depth":3,"id":"三级文本回退链","text":"三级文本回退链"},{"depth":2,"id":"4-oom-防护-抵御-200-mb-截图","text":"4. OOM 防护：抵御 200 MB 截图"},{"depth":2,"id":"5-ide-源码定位追踪-知道代码从哪来","text":"5. IDE 源码定位追踪：知道代码从哪来"},{"depth":3,"id":"支持的-ide","text":"支持的 IDE"},{"depth":3,"id":"工作原理","text":"工作原理"},{"depth":3,"id":"回跳方式","text":"回跳方式"},{"depth":2,"id":"6-figma-剪贴板检测","text":"6. Figma 剪贴板检测"},{"depth":2,"id":"7-完整监控循环","text":"7. 完整监控循环"},{"depth":2,"id":"结语","text":"结语"}]}]],["$L4","$L5","$L6"],"$L7"]}],"loading":null,"isPartial":false}
+4:["$","link","0",{"rel":"stylesheet","href":"/_next/static/chunks/afdd98b8a478f0f3.css","precedence":"next"}]
+5:["$","script","script-0",{"src":"/_next/static/chunks/63d601ccd18bb55a.js","async":true}]
+6:["$","script","script-1",{"src":"/_next/static/chunks/b34dcf7bacfe8b19.js","async":true}]
+7:["$","$L8",null,{"children":["$","$9",null,{"name":"Next.MetadataOutlet","children":"$@a"}]}]
+a:null

@@ -1,0 +1,118 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset
+  xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
+  xmlns:image="http://www.google.com/schemas/sitemap-image/1.1"
+>
+  <url>
+    <loc>https://deckclip.app/</loc>
+    <image:image>
+      <image:loc>https://deckclip.app/Deck.jpeg</image:loc>
+      <image:title>Deck Product Preview</image:title>
+      <image:caption>Deck macOS clipboard manager product preview</image:caption>
+    </image:image>
+  </url>
+  <url>
+    <loc>https://deckclip.app/zh-cn</loc>
+    <image:image>
+      <image:loc>https://deckclip.app/Deck.jpeg</image:loc>
+      <image:title>Deck Product Preview (ZH)</image:title>
+      <image:caption>Deck macOS clipboard manager product preview for Chinese page</image:caption>
+    </image:image>
+  </url>
+  <url>
+    <loc>https://deckclip.app/</loc>
+    <image:image>
+      <image:loc>https://deckclip.app/deck-macOS-Default-96x96@1x.png</image:loc>
+      <image:title>Deck Icon Light</image:title>
+      <image:caption>Deck app icon for light background</image:caption>
+    </image:image>
+  </url>
+  <url>
+    <loc>https://deckclip.app/</loc>
+    <image:image>
+      <image:loc>https://deckclip.app/deck-macOS-Dark-96x96@1x.png</image:loc>
+      <image:title>Deck Icon Dark</image:title>
+      <image:caption>Deck app icon for dark background</image:caption>
+    </image:image>
+  </url>
+  <url>
+    <loc>https://deckclip.app/download</loc>
+    <image:image>
+      <image:loc>https://deckclip.app/deck-macOS-Default-192x192@1x.png</image:loc>
+      <image:title>Deck Download Icon</image:title>
+      <image:caption>Deck macOS app icon on download page</image:caption>
+    </image:image>
+  </url>
+  <url>
+    <loc>https://deckclip.app/zh-cn/download</loc>
+    <image:image>
+      <image:loc>https://deckclip.app/deck-macOS-Default-192x192@1x.png</image:loc>
+      <image:title>Deck Download Icon (ZH)</image:title>
+      <image:caption>Deck macOS app icon on Chinese download page</image:caption>
+    </image:image>
+  </url>
+  <url>
+    <loc>https://deckclip.app/download</loc>
+    <image:image>
+      <image:loc>https://deckclip.app/deck-macOS-Dark-192x192@1x.png</image:loc>
+      <image:title>Deck Download Icon Dark</image:title>
+      <image:caption>Deck macOS app icon for dark mode on download page</image:caption>
+    </image:image>
+  </url>
+  <url>
+    <loc>https://deckclip.app/zh-cn/download</loc>
+    <image:image>
+      <image:loc>https://deckclip.app/deck-macOS-Dark-192x192@1x.png</image:loc>
+      <image:title>Deck Download Icon Dark (ZH)</image:title>
+      <image:caption>Deck macOS app icon for dark mode on Chinese download page</image:caption>
+    </image:image>
+  </url>
+  <url>
+    <loc>https://deckclip.app/showcase</loc>
+    <image:image>
+      <image:loc>https://deckclip.app/DeckScriptPlugin.webp</image:loc>
+      <image:title>Deck Script Plugin Showcase</image:title>
+      <image:caption>Deck Script Plugin demo video poster</image:caption>
+    </image:image>
+  </url>
+  <url>
+    <loc>https://deckclip.app/showcase</loc>
+    <image:image>
+      <image:loc>https://deckclip.app/DeckAIMemory.webp</image:loc>
+      <image:title>Deck AI Memory Showcase</image:title>
+      <image:caption>Deck AI Memory demo video poster</image:caption>
+    </image:image>
+  </url>
+  <url>
+    <loc>https://deckclip.app/showcase</loc>
+    <image:image>
+      <image:loc>https://deckclip.app/DeckAI.webp</image:loc>
+      <image:title>Deck AI Showcase</image:title>
+      <image:caption>Deck AI demo video poster</image:caption>
+    </image:image>
+  </url>
+  <url>
+    <loc>https://deckclip.app/zh-cn/showcase</loc>
+    <image:image>
+      <image:loc>https://deckclip.app/DeckScriptPlugin.webp</image:loc>
+      <image:title>Deck Script Plugin Showcase (ZH)</image:title>
+      <image:caption>中文演示页的 Deck Script Plugin 视频封面</image:caption>
+    </image:image>
+  </url>
+  <url>
+    <loc>https://deckclip.app/zh-cn/showcase</loc>
+    <image:image>
+      <image:loc>https://deckclip.app/DeckAIMemory.webp</image:loc>
+      <image:title>Deck AI Memory Showcase (ZH)</image:title>
+      <image:caption>中文演示页的 Deck AI Memory 视频封面</image:caption>
+    </image:image>
+  </url>
+  <url>
+    <loc>https://deckclip.app/zh-cn/showcase</loc>
+    <image:image>
+      <image:loc>https://deckclip.app/DeckAI.webp</image:loc>
+      <image:title>Deck AI Showcase (ZH)</image:title>
+      <image:caption>中文演示页的 Deck AI 视频封面</image:caption>
+    </image:image>
+  </url>
+</urlset>
