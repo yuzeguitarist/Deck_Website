@@ -1,0 +1,235 @@
+{
+  "name": "Deck",
+  "canonical": "https://deckclip.app",
+  "last_updated": "2026-03-11",
+  "schema_version": "1.3",
+  "locale_default": "en",
+  "locales": ["en", "zh-CN"],
+  "crawl_hub": {
+    "en": "https://deckclip.app/ai",
+    "zh-CN": "https://deckclip.app/zh-cn/ai"
+  },
+  "product": {
+    "category": "SoftwareApplication",
+    "platform": "macOS 14.0+",
+    "cpu": ["Apple Silicon", "Intel"],
+    "source_availability": "partially_open_source",
+    "privacy_model": "local_first"
+  },
+  "key_features": [
+    "keyword_regex_type_search",
+    "queue_mode",
+    "secure_lan_sharing_aes_gcm",
+    "touch_id_protection",
+    "semantic_search",
+    "ocr_text_extraction"
+  ],
+  "entrypoints": {
+    "web": [
+      "https://deckclip.app/",
+      "https://deckclip.app/features",
+      "https://deckclip.app/download",
+      "https://deckclip.app/showcase",
+      "https://deckclip.app/ai",
+      "https://deckclip.app/blog",
+      "https://deckclip.app/docs",
+      "https://deckclip.app/support",
+      "https://deckclip.app/feedback",
+      "https://deckclip.app/survey",
+      "https://deckclip.app/changelog",
+      "https://deckclip.app/zh-cn",
+      "https://deckclip.app/zh-cn/features",
+      "https://deckclip.app/zh-cn/download",
+      "https://deckclip.app/zh-cn/showcase",
+      "https://deckclip.app/zh-cn/ai",
+      "https://deckclip.app/zh-cn/blog",
+      "https://deckclip.app/zh-cn/docs",
+      "https://deckclip.app/zh-cn/support",
+      "https://deckclip.app/zh-cn/feedback",
+      "https://deckclip.app/zh-cn/survey",
+      "https://deckclip.app/zh-cn/changelog",
+      "https://deckclip.app/blog/ai-agent-plugins",
+      "https://deckclip.app/blog/clipboard-monitoring",
+      "https://deckclip.app/blog/privacy-security",
+      "https://deckclip.app/blog/search-architecture",
+      "https://deckclip.app/zh-cn/blog/ai-agent-plugins",
+      "https://deckclip.app/zh-cn/blog/clipboard-monitoring",
+      "https://deckclip.app/zh-cn/blog/privacy-security",
+      "https://deckclip.app/zh-cn/blog/search-architecture"
+    ],
+    "priority_crawl_order": [
+      "https://deckclip.app/",
+      "https://deckclip.app/features",
+      "https://deckclip.app/download",
+      "https://deckclip.app/showcase",
+      "https://deckclip.app/ai",
+      "https://deckclip.app/blog",
+      "https://deckclip.app/docs",
+      "https://deckclip.app/support",
+      "https://deckclip.app/feedback",
+      "https://deckclip.app/survey",
+      "https://github.com/yuzeguitarist/Deck/releases",
+      "https://deckclip.app/changelog"
+    ],
+    "source_of_truth": [
+      "https://github.com/yuzeguitarist/Deck/releases",
+      "https://github.com/yuzeguitarist/Deck"
+    ],
+    "machine_readable": [
+      "https://deckclip.app/robots.txt",
+      "https://deckclip.app/sitemap-index.xml",
+      "https://deckclip.app/sitemap.xml",
+      "https://deckclip.app/sitemap-images.xml",
+      "https://deckclip.app/sitemap-ai.xml",
+      "https://deckclip.app/llms.txt",
+      "https://deckclip.app/llms-full.txt",
+      "https://deckclip.app/ai-index.json"
+    ],
+    "machine_readable_notes": [
+      "prefer llms.txt for quick routing",
+      "use llms-full.txt when extra product context is needed",
+      "use ai-index.json for structured crawl + freshness policy"
+    ]
+  },
+  "content_hubs": [
+    {
+      "type": "blog_index",
+      "locale": "en",
+      "url": "https://deckclip.app/blog",
+      "description": "Engineering deep dives and architecture articles."
+    },
+    {
+      "type": "blog_index",
+      "locale": "zh-CN",
+      "url": "https://deckclip.app/zh-cn/blog",
+      "description": "中文技术博客索引页。"
+    }
+  ],
+  "interaction_pages": [
+    {
+      "type": "showcase",
+      "locale": "en",
+      "url": "https://deckclip.app/showcase",
+      "description": "Official demo videos and product walkthroughs."
+    },
+    {
+      "type": "showcase",
+      "locale": "zh-CN",
+      "url": "https://deckclip.app/zh-cn/showcase",
+      "description": "官方演示视频与产品讲解页面。"
+    },
+    {
+      "type": "feedback",
+      "locale": "en",
+      "url": "https://deckclip.app/feedback",
+      "description": "Public web form for bug reports and feature ideas."
+    },
+    {
+      "type": "feedback",
+      "locale": "zh-CN",
+      "url": "https://deckclip.app/zh-cn/feedback",
+      "description": "中文网页反馈入口。"
+    },
+    {
+      "type": "survey",
+      "locale": "en",
+      "url": "https://deckclip.app/survey",
+      "description": "User research survey for product feedback and roadmap input."
+    },
+    {
+      "type": "survey",
+      "locale": "zh-CN",
+      "url": "https://deckclip.app/zh-cn/survey",
+      "description": "中文用户调研问卷。"
+    }
+  ],
+  "blog_posts": [
+    {
+      "slug": "ai-agent-plugins",
+      "date": "2026-03-06",
+      "tags": ["AI", "Plugins", "Architecture"],
+      "title": {
+        "en": "AI Agent & Script Plugins: Deck's Self-Evolving System",
+        "zh-CN": "AI Agent 与脚本插件：Deck 的自我进化系统"
+      },
+      "summary": {
+        "en": "How Deck deeply integrates AI into clipboard management — multi-provider abstraction, 12 tools, Agent loops, JavaScriptCore sandboxed plugins, and Smart Rules.",
+        "zh-CN": "Deck 如何将 AI 深度融入剪贴板管理——多 Provider 抽象、12 个工具、Agent 循环、JavaScriptCore 沙箱插件和 Smart Rule 引擎。"
+      },
+      "url": {
+        "en": "https://deckclip.app/blog/ai-agent-plugins",
+        "zh-CN": "https://deckclip.app/zh-cn/blog/ai-agent-plugins"
+      }
+    },
+    {
+      "slug": "clipboard-monitoring",
+      "date": "2026-03-06",
+      "tags": ["macOS", "System", "Performance"],
+      "title": {
+        "en": "The Invisible Complexity of Clipboard Monitoring",
+        "zh-CN": "剪贴板监控背后的复杂度"
+      },
+      "summary": {
+        "en": "From 0.5s to 15s — How Deck makes clipboard monitoring both responsive and power-efficient through adaptive polling, content parsing, OOM protection, and IDE integration.",
+        "zh-CN": "从 0.5 秒到 15 秒——Deck 如何通过自适应轮询、内容类型解析、OOM 防护和 IDE 集成让剪贴板监控既灵敏又省电。"
+      },
+      "url": {
+        "en": "https://deckclip.app/blog/clipboard-monitoring",
+        "zh-CN": "https://deckclip.app/zh-cn/blog/clipboard-monitoring"
+      }
+    },
+    {
+      "slug": "privacy-security",
+      "date": "2026-03-06",
+      "tags": ["Privacy", "Security", "Encryption"],
+      "title": {
+        "en": "Deck's Privacy Architecture: How a Clipboard Manager Protects What It Reads",
+        "zh-CN": "Deck 的隐私架构：剪贴板管理器如何保护它读到的一切"
+      },
+      "summary": {
+        "en": "Defense in depth — sensitive content filtering, AES-GCM encryption, Touch ID biometrics, and zero-width character steganography.",
+        "zh-CN": "纵深防御——敏感内容过滤、AES-GCM 加密、Touch ID 生物识别和零宽字符隐写术。"
+      },
+      "url": {
+        "en": "https://deckclip.app/blog/privacy-security",
+        "zh-CN": "https://deckclip.app/zh-cn/blog/privacy-security"
+      }
+    },
+    {
+      "slug": "search-architecture",
+      "date": "2026-03-06",
+      "tags": ["Search", "SQLite", "NLP"],
+      "title": {
+        "en": "Local-First, Multi-Layered Search Architecture",
+        "zh-CN": "本地优先的多层搜索架构"
+      },
+      "summary": {
+        "en": "How Deck implements a full search pipeline from exact match to semantic search, entirely offline — FTS5, fuzzy matching, NLEmbedding, and sqlite-vec.",
+        "zh-CN": "Deck 如何在纯本地环境下实现从精确匹配到语义搜索的全链路搜索——FTS5、模糊匹配、NLEmbedding 和 sqlite-vec。"
+      },
+      "url": {
+        "en": "https://deckclip.app/blog/search-architecture",
+        "zh-CN": "https://deckclip.app/zh-cn/blog/search-architecture"
+      }
+    }
+  ],
+  "freshness_policy": {
+    "latest_version_priority": [
+      "https://github.com/yuzeguitarist/Deck/releases",
+      "https://deckclip.app/changelog"
+    ],
+    "release_conflict_resolution": "trust_github_releases_timestamp",
+    "if_uncertain": "state_uncertainty_and_cite_official_links"
+  },
+  "retrieval_hints": {
+    "preferred_citation_level": "section_pages_over_homepage_only",
+    "answer_language_rule": "default_en_switch_to_zh_for_chinese_queries",
+    "best_chunks": ["quick_facts", "core_features", "source_of_truth", "freshness_policy"],
+    "crawl_budget_hint": "fetch_machine_readable_first_then_section_pages"
+  },
+  "avoid_claims": [
+    "fully_open_source",
+    "always_on_cloud_sync",
+    "unverified_pricing_or_tiers"
+  ]
+}

@@ -1,0 +1,85 @@
+1:"$Sreact.fragment"
+2:I[79520,["/_next/static/chunks/5ec017736547683f.js","/_next/static/chunks/31de6e89f09f52e0.js","/_next/static/chunks/4b49feae39cdb672.js"],""]
+9:I[68027,["/_next/static/chunks/ff1a16fafef87110.js","/_next/static/chunks/6153d1a363729c2c.js"],"default"]
+:HL["/_next/static/chunks/6521ae89157b2bb3.css","style"]
+:HL["/_next/static/media/01e4147cff8141ee-s.p.7787e134.woff2","font",{"crossOrigin":"","type":"font/woff2"}]
+:HL["/_next/static/media/83afe278b6a6bb3c-s.p.3a6ba036.woff2","font",{"crossOrigin":"","type":"font/woff2"}]
+:HL["/_next/static/media/8bd76523131fa0fc-s.p.eb17b6b9.woff2","font",{"crossOrigin":"","type":"font/woff2"}]
+3:T927,
+              (function() {
+                try {
+                  var basePath = '';
+                  var path = window.location.pathname || '/';
+
+                  var relative = path;
+                  if (basePath && path.startsWith(basePath)) {
+                    relative = path.slice(basePath.length) || '/';
+                  }
+                  if (!relative.startsWith('/')) {
+                    relative = '/' + relative;
+                  }
+
+                  var normalizedRelative = relative;
+                  var lowerRelative = relative.toLowerCase();
+                  if (lowerRelative === '/zh-cn' || lowerRelative.startsWith('/zh-cn/')) {
+                    normalizedRelative = '/zh-cn' + relative.slice('/zh-cn'.length);
+                  }
+
+                  if (normalizedRelative !== relative) {
+                    var search = window.location.search || '';
+                    var hash = window.location.hash || '';
+                    window.location.replace((basePath || '') + normalizedRelative + search + hash);
+                    return;
+                  }
+
+                  var isZhRoute = normalizedRelative === '/zh-cn' || normalizedRelative.startsWith('/zh-cn/');
+                  var resolvedLang = isZhRoute ? 'zh-CN' : 'en';
+                  if (document.documentElement.lang !== resolvedLang) {
+                    document.documentElement.lang = resolvedLang;
+                  }
+
+                  var saveData = false;
+                  try {
+                    saveData = !!(navigator.connection && navigator.connection.saveData);
+                  } catch (_) {}
+
+                  var isMobileViewport = window.matchMedia('(max-width: 900px)').matches;
+                  var isTouchDevice = window.matchMedia('(pointer: coarse)').matches;
+                  var prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+                  var shouldUseMobileLite = prefersReducedMotion || saveData || isMobileViewport || isTouchDevice;
+
+                  if (shouldUseMobileLite) {
+                    document.documentElement.setAttribute('data-mobile-lite', '1');
+                  } else {
+                    document.documentElement.removeAttribute('data-mobile-lite');
+                  }
+                } catch (_) {}
+              })();
+            0:{"P":null,"b":"pm3fbawIzcyihp8SVMInv","c":["","about"],"q":"","i":false,"f":[[["",{"children":["about",{"children":["__PAGE__",{}]}]},"$undefined","$undefined",true],[["$","$1","c",{"children":[[["$","link","0",{"rel":"stylesheet","href":"/_next/static/chunks/6521ae89157b2bb3.css","precedence":"next","crossOrigin":"$undefined","nonce":"$undefined"}],["$","script","script-0",{"src":"/_next/static/chunks/5ec017736547683f.js","async":true,"nonce":"$undefined"}],["$","script","script-1",{"src":"/_next/static/chunks/31de6e89f09f52e0.js","async":true,"nonce":"$undefined"}],["$","script","script-2",{"src":"/_next/static/chunks/4b49feae39cdb672.js","async":true,"nonce":"$undefined"}]],["$","html",null,{"lang":"en","suppressHydrationWarning":true,"className":"scroll-smooth","children":[["$","head",null,{"children":[["$","$L2",null,{"src":"https://www.googletagmanager.com/gtag/js?id=G-HWX0XFB5CZ","strategy":"beforeInteractive"}],["$","$L2",null,{"id":"google-analytics","strategy":"beforeInteractive","children":"\n            window.dataLayer = window.dataLayer || [];\n            function gtag(){dataLayer.push(arguments);}\n            gtag('js', new Date());\n            gtag('config', 'G-HWX0XFB5CZ');\n          "}],["$","script",null,{"type":"application/ld+json","dangerouslySetInnerHTML":{"__html":"{\"@context\":\"https://schema.org\",\"@graph\":[{\"@type\":\"Organization\",\"@id\":\"https://deckclip.app#organization\",\"name\":\"Deck\",\"alternateName\":[\"Deck Clipboard\",\"Deck Clipboard App\"],\"url\":\"https://deckclip.app\",\"logo\":\"https://deckclip.app/deck-macOS-Default-192x192@1x.png\",\"sameAs\":[\"https://github.com/yuzeguitarist/Deck\"]},{\"@type\":\"WebSite\",\"@id\":\"https://deckclip.app#website\",\"name\":\"Deck\",\"alternateName\":\"Deck Clipboard\",\"url\":\"https://deckclip.app\",\"description\":\"A modern, native, privacy-first clipboard manager for macOS.\",\"inLanguage\":[\"en\",\"zh-CN\"],\"image\":\"https://deckclip.app/Deck.webp\",\"publisher\":{\"@id\":\"https://deckclip.app#organization\"}}]}"}}],["$","script",null,{"dangerouslySetInnerHTML":{"__html":"$3"}}],"$L4"]}],"$L5"]}]]}],{"children":["$L6",{"children":["$L7",{},null,false,false]},null,false,false]},null,false,false],"$L8",false]],"m":"$undefined","G":["$9",[]],"S":true}
+a:I[59919,["/_next/static/chunks/5ec017736547683f.js","/_next/static/chunks/31de6e89f09f52e0.js","/_next/static/chunks/4b49feae39cdb672.js"],"ThemeProvider"]
+b:I[33750,["/_next/static/chunks/5ec017736547683f.js","/_next/static/chunks/31de6e89f09f52e0.js","/_next/static/chunks/4b49feae39cdb672.js"],"LanguageProvider"]
+c:I[90344,["/_next/static/chunks/5ec017736547683f.js","/_next/static/chunks/31de6e89f09f52e0.js","/_next/static/chunks/4b49feae39cdb672.js"],"MotionAccessibilityProvider"]
+d:I[23661,["/_next/static/chunks/5ec017736547683f.js","/_next/static/chunks/31de6e89f09f52e0.js","/_next/static/chunks/4b49feae39cdb672.js"],"DownloadPagePreloader"]
+e:I[74866,["/_next/static/chunks/5ec017736547683f.js","/_next/static/chunks/31de6e89f09f52e0.js","/_next/static/chunks/4b49feae39cdb672.js"],"ScrollRestorationManager"]
+f:I[63687,["/_next/static/chunks/5ec017736547683f.js","/_next/static/chunks/31de6e89f09f52e0.js","/_next/static/chunks/4b49feae39cdb672.js"],"ScrollToTop"]
+10:I[39756,["/_next/static/chunks/ff1a16fafef87110.js","/_next/static/chunks/6153d1a363729c2c.js"],"default"]
+11:I[16868,["/_next/static/chunks/5ec017736547683f.js","/_next/static/chunks/31de6e89f09f52e0.js","/_next/static/chunks/4b49feae39cdb672.js","/_next/static/chunks/4c1741ab7dc0db30.js"],"default"]
+12:I[37457,["/_next/static/chunks/ff1a16fafef87110.js","/_next/static/chunks/6153d1a363729c2c.js"],"default"]
+13:I[29306,["/_next/static/chunks/5ec017736547683f.js","/_next/static/chunks/31de6e89f09f52e0.js","/_next/static/chunks/4b49feae39cdb672.js","/_next/static/chunks/fc65320ddafdb621.js"],"default"]
+14:I[47257,["/_next/static/chunks/ff1a16fafef87110.js","/_next/static/chunks/6153d1a363729c2c.js"],"ClientPageRoot"]
+15:I[61642,["/_next/static/chunks/5ec017736547683f.js","/_next/static/chunks/31de6e89f09f52e0.js","/_next/static/chunks/4b49feae39cdb672.js","/_next/static/chunks/67a1131ea2bcb393.js","/_next/static/chunks/47413eb9754e363e.js"],"default"]
+18:I[97367,["/_next/static/chunks/ff1a16fafef87110.js","/_next/static/chunks/6153d1a363729c2c.js"],"OutletBoundary"]
+19:"$Sreact.suspense"
+1b:I[97367,["/_next/static/chunks/ff1a16fafef87110.js","/_next/static/chunks/6153d1a363729c2c.js"],"ViewportBoundary"]
+1d:I[97367,["/_next/static/chunks/ff1a16fafef87110.js","/_next/static/chunks/6153d1a363729c2c.js"],"MetadataBoundary"]
+4:["$","script",null,{"dangerouslySetInnerHTML":{"__html":"\n              (function() {\n                const stored = localStorage.getItem('theme');\n                const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;\n                if (stored === 'dark' || (!stored && prefersDark) || (stored === 'system' && prefersDark)) {\n                  document.documentElement.classList.add('dark');\n                }\n              })();\n            "}}]
+5:["$","body",null,{"className":"inter_fd091ad6-module__giF-bG__variable cormorant_garamond_1819f3ef-module__p1EMLq__variable antialiased selection:bg-foreground/10 selection:text-foreground","children":[["$","a",null,{"href":"#main-content","className":"skip-link","children":"Skip to main content / 跳到主要内容"}],["$","$La",null,{"children":["$","$Lb",null,{"children":["$","$Lc",null,{"children":[["$","$Ld",null,{}],["$","$Le",null,{}],["$","$Lf",null,{}],["$","div",null,{"id":"main-content","tabIndex":-1,"children":["$","$L10",null,{"parallelRouterKey":"children","error":"$undefined","errorStyles":"$undefined","errorScripts":"$undefined","template":["$","$L11",null,{"children":["$","$L12",null,{}]}],"templateStyles":[],"templateScripts":[["$","script","script-0",{"src":"/_next/static/chunks/4c1741ab7dc0db30.js","async":true}]],"notFound":[["$","$L13",null,{}],[]],"forbidden":"$undefined","unauthorized":"$undefined"}]}]]}]}]}]]}]
+6:["$","$1","c",{"children":[null,[["$","script",null,{"type":"application/ld+json","dangerouslySetInnerHTML":{"__html":"{\"@context\":\"https://schema.org\",\"@type\":\"BreadcrumbList\",\"itemListElement\":[{\"@type\":\"ListItem\",\"position\":1,\"name\":\"Home\",\"item\":\"https://deckclip.app\"},{\"@type\":\"ListItem\",\"position\":2,\"name\":\"About\",\"item\":\"https://deckclip.app/about\"}]}"}}],["$","$L10",null,{"parallelRouterKey":"children","error":"$undefined","errorStyles":"$undefined","errorScripts":"$undefined","template":["$","$L12",null,{}],"templateStyles":"$undefined","templateScripts":"$undefined","notFound":"$undefined","forbidden":"$undefined","unauthorized":"$undefined"}]]]}]
+7:["$","$1","c",{"children":[["$","$L14",null,{"Component":"$15","serverProvidedParams":{"searchParams":{},"params":{},"promises":["$@16","$@17"]}}],[["$","script","script-0",{"src":"/_next/static/chunks/67a1131ea2bcb393.js","async":true,"nonce":"$undefined"}],["$","script","script-1",{"src":"/_next/static/chunks/47413eb9754e363e.js","async":true,"nonce":"$undefined"}]],["$","$L18",null,{"children":["$","$19",null,{"name":"Next.MetadataOutlet","children":"$@1a"}]}]]}]
+8:["$","$1","h",{"children":[null,["$","$L1b",null,{"children":"$L1c"}],["$","div",null,{"hidden":true,"children":["$","$L1d",null,{"children":["$","$19",null,{"name":"Next.Metadata","children":"$L1e"}]}]}],["$","meta",null,{"name":"next-size-adjust","content":""}]]}]
+16:{}
+17:"$7:props:children:0:props:serverProvidedParams:params"
+1c:[["$","meta","0",{"charSet":"utf-8"}],["$","meta","1",{"name":"viewport","content":"width=device-width, initial-scale=1"}],["$","meta","2",{"name":"theme-color","media":"(prefers-color-scheme: light)","content":"#f8f9fa"}],["$","meta","3",{"name":"theme-color","media":"(prefers-color-scheme: dark)","content":"#0a0a0a"}]]
+1f:I[27201,["/_next/static/chunks/ff1a16fafef87110.js","/_next/static/chunks/6153d1a363729c2c.js"],"IconMark"]
+1a:null
+1e:[["$","title","0",{"children":"About Deck — Story, Mission & Values | Deck"}],["$","meta","1",{"name":"description","content":"The story, mission, and values behind Deck — a native, privacy-first clipboard manager built for macOS power users."}],["$","meta","2",{"name":"application-name","content":"Deck"}],["$","meta","3",{"name":"author","content":"Yuze Pan"}],["$","link","4",{"rel":"manifest","href":"/manifest.webmanifest","crossOrigin":"$undefined"}],["$","meta","5",{"name":"keywords","content":"about deck,deck clipboard manager,privacy-first productivity app,native macOS clipboard tool,deck open source clipboard,Yuze Pan developer"}],["$","meta","6",{"name":"creator","content":"Yuze Pan"}],["$","meta","7",{"name":"publisher","content":"Deck"}],["$","meta","8",{"name":"robots","content":"index, follow"}],["$","meta","9",{"name":"googlebot","content":"index, follow, max-video-preview:-1, max-image-preview:large, max-snippet:-1"}],["$","meta","10",{"name":"content-language","content":"en"}],["$","link","11",{"rel":"canonical","href":"https://deckclip.app/about"}],["$","link","12",{"rel":"alternate","hrefLang":"en","href":"https://deckclip.app/about"}],["$","link","13",{"rel":"alternate","hrefLang":"zh-CN","href":"https://deckclip.app/zh-cn/about"}],["$","link","14",{"rel":"alternate","hrefLang":"x-default","href":"https://deckclip.app/about"}],["$","meta","15",{"property":"og:title","content":"About Deck — Story, Mission & Values | Deck"}],["$","meta","16",{"property":"og:description","content":"The story, mission, and values behind Deck — a native, privacy-first clipboard manager built for macOS power users."}],["$","meta","17",{"property":"og:url","content":"https://deckclip.app/about"}],["$","meta","18",{"property":"og:site_name","content":"Deck"}],["$","meta","19",{"property":"og:locale","content":"en_US"}],["$","meta","20",{"property":"og:image","content":"https://deckclip.app/Deck.webp"}],["$","meta","21",{"property":"og:image:width","content":"1600"}],["$","meta","22",{"property":"og:image:height","content":"801"}],["$","meta","23",{"property":"og:image:alt","content":"Deck clipboard manager preview"}],["$","meta","24",{"property":"og:locale:alternate","content":"zh_CN"}],["$","meta","25",{"property":"og:type","content":"website"}],["$","meta","26",{"name":"twitter:card","content":"summary_large_image"}],["$","meta","27",{"name":"twitter:title","content":"About Deck — Story, Mission & Values | Deck"}],["$","meta","28",{"name":"twitter:description","content":"The story, mission, and values behind Deck — a native, privacy-first clipboard manager built for macOS power users."}],["$","meta","29",{"name":"twitter:image","content":"https://deckclip.app/Deck.webp"}],["$","link","30",{"rel":"icon","href":"/favicon-48x48.png","type":"image/png","sizes":"48x48"}],["$","link","31",{"rel":"apple-touch-icon","href":"/deck-macOS-Default-192x192@1x.png"}],["$","$L1f","32",{}]]

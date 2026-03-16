@@ -1,0 +1,294 @@
+1:"$Sreact.fragment"
+2:I[98407,["/_next/static/chunks/5ec017736547683f.js","/_next/static/chunks/31de6e89f09f52e0.js","/_next/static/chunks/4b49feae39cdb672.js","/_next/static/chunks/63d601ccd18bb55a.js","/_next/static/chunks/47413eb9754e363e.js"],"BlogPostPage"]
+8:I[97367,["/_next/static/chunks/ff1a16fafef87110.js","/_next/static/chunks/6153d1a363729c2c.js"],"OutletBoundary"]
+9:"$Sreact.suspense"
+:HL["/_next/static/chunks/afdd98b8a478f0f3.css","style"]
+3:T5755,<hr>
+<p>A clipboard manager sees everything the user copies — passwords, bank card numbers, ID numbers, confidential documents. <a href="https://deckclip.app">Deck</a> is a macOS-native clipboard manager built with Swift and SwiftUI, and this visibility comes with an obligation: the app must protect every piece of data it touches.</p>
+<p>Deck&#39;s approach is defense in depth — multiple overlapping layers of protection covering filtering, encryption, access control, and covert communication.</p>
+<h3 id="threat-model">Threat Model</h3>
+<p>Deck&#39;s security design targets three scenarios: (1) <strong>data leakage</strong> — sensitive content like passwords or card numbers accidentally saved to clipboard history; (2) <strong>local unauthorized access</strong> — someone with physical access to an unlocked Mac browsing the clipboard database; (3) <strong>in-transit interception</strong> — clipboard data exposed during LAN sharing or when pasted into untrusted channels. Each layer in the architecture maps to one or more of these threats.</p>
+<hr>
+<h2 id="1-the-sensitive-content-filtering-pipeline">1. The Sensitive Content Filtering Pipeline</h2>
+<p>When a user copies a bank card number from a chat window, the filtering pipeline intercepts it within milliseconds — before the number touches the database.</p>
+<p>The pipeline lives in <code>ClipboardService.swift</code>, triggered inside <code>checkForChangesInternal()</code> whenever a clipboard change is detected. It runs four checks in sequence, ordered from fastest to slowest so the cheapest checks act as early exits.</p>
+<div class="blog-mermaid" data-mermaid="flowchart%20TD%0A%20%20%20%20A%5BClipboard%20Changed%3Cbr%3E%E5%89%AA%E8%B4%B4%E6%9D%BF%E5%8F%98%E5%8C%96%5D%20--%3E%20B%7BSystem%20Password%3Cbr%3EType%20Marker%3F%3Cbr%3E%E7%B3%BB%E7%BB%9F%E5%AF%86%E7%A0%81%E7%B1%BB%E5%9E%8B%E6%A0%87%E8%AE%B0%3F%7D%0A%20%20%20%20B%20--%3E%7CYes%20%E6%98%AF%7C%20SKIP%5BSkip%20%E2%80%94%20Record%20Nothing%3Cbr%3E%E8%B7%B3%E8%BF%87%EF%BC%8C%E4%B8%8D%E8%AE%B0%E5%BD%95%5D%0A%20%20%20%20B%20--%3E%7CNo%20%E5%90%A6%7C%20C%7BSensitive%20Window%3Cbr%3ETitle%3F%3Cbr%3E%E6%95%8F%E6%84%9F%E7%AA%97%E5%8F%A3%E6%A0%87%E9%A2%98%3F%7D%0A%20%20%20%20C%20--%3E%7CYes%20%E6%98%AF%7C%20SKIP%0A%20%20%20%20C%20--%3E%7CNo%20%E5%90%A6%7C%20D%7BBank%20Card%3Cbr%3ENumber%3F%3Cbr%3E%E9%93%B6%E8%A1%8C%E5%8D%A1%E5%8F%B7%3F%7D%0A%20%20%20%20D%20--%3E%7CYes%20%E6%98%AF%7C%20SKIP%0A%20%20%20%20D%20--%3E%7CNo%20%E5%90%A6%7C%20E%7BIdentity%20Document%3Cbr%3ENumber%3F%3Cbr%3E%E8%BA%AB%E4%BB%BD%E8%AF%81%E4%BB%B6%E5%8F%B7%3F%7D%0A%20%20%20%20E%20--%3E%7CYes%20%E6%98%AF%7C%20SKIP%0A%20%20%20%20E%20--%3E%7CNo%20%E5%90%A6%7C%20F%5BRecord%20Item%3Cbr%3E%E8%AE%B0%E5%BD%95%E6%9D%A1%E7%9B%AE%5D"><pre class="mermaid-fallback"><code>flowchart TD
+    A[Clipboard Changed<br>剪贴板变化] --> B{System Password<br>Type Marker?<br>系统密码类型标记?}
+    B -->|Yes 是| SKIP[Skip — Record Nothing<br>跳过，不记录]
+    B -->|No 否| C{Sensitive Window<br>Title?<br>敏感窗口标题?}
+    C -->|Yes 是| SKIP
+    C -->|No 否| D{Bank Card<br>Number?<br>银行卡号?}
+    D -->|Yes 是| SKIP
+    D -->|No 否| E{Identity Document<br>Number?<br>身份证件号?}
+    E -->|Yes 是| SKIP
+    E -->|No 否| F[Record Item<br>记录条目]</code></pre></div><h3 id="layer-1-system-password-type-markers">Layer 1: System Password Type Markers</h3>
+<p>The fastest check — zero parsing required. Password managers like 1Password and the macOS Keychain tag their clipboard entries with special pasteboard types:</p>
+<ul>
+<li><code>org.nspasteboard.ConcealedType</code> (community standard</li>
+<li><code>com.apple.password</code></li>
+<li><code>com.apple.securetext</code></li>
+</ul>
+<p>If any of these types appear in <code>pasteboard.types</code>, Deck immediately skips the entry. No content is read, no content is stored.</p>
+<h3 id="layer-2-window-title-aware-auto-pause">Layer 2: Window Title-Aware Auto-Pause</h3>
+<p>Not all apps tag their sensitive content. When the user is typing in a login form, the window title often contains telltale words. Deck uses the macOS Accessibility API (<code>AXUIElementCopyAttributeValue</code>) to read the focused window&#39;s title and checks it against a curated list of ~20 keywords:</p>
+<div class="code-block-wrapper"><button class="copy-btn" aria-label="Copy code"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg></button><pre><code class="hljs">password, passwd, 密码, login, signin, 登录, credential, token,
+secret, keychain, 钥匙串, vault, 2fa, otp, authenticator,
+验证码, private, secure, 私密, 加密</code></pre></div><p>To avoid hammering the AX API on every poll cycle, window titles are cached by PID with a 0.4-second TTL. This check requires <code>AXIsProcessTrusted()</code> accessibility permission and is controlled by the <code>smartWindowTitleDetection</code> preference.</p>
+<h3 id="layer-3-bank-card-detection-via-luhn-algorithm">Layer 3: Bank Card Detection via Luhn Algorithm</h3>
+<p>Raw clipboard text is checked for sequences of 13–19 digits (ignoring spaces and hyphens), then validated in two stages:</p>
+<p><strong>Stage 1</strong> — IIN/BIN prefix matching against known card networks:</p>
+<div class="table-wrapper"><table>
+<thead>
+<tr>
+<th>Prefix / 前缀</th>
+<th>Network / 卡组织</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>4</td>
+<td>Visa</td>
+</tr>
+<tr>
+<td>51–55</td>
+<td>Mastercard</td>
+</tr>
+<tr>
+<td>34, 37</td>
+<td>American Express</td>
+</tr>
+<tr>
+<td>62</td>
+<td>UnionPay / 银联</td>
+</tr>
+<tr>
+<td>6011, 65</td>
+<td>Discover</td>
+</tr>
+<tr>
+<td>35</td>
+<td>JCB</td>
+</tr>
+</tbody></table></div>
+<p><strong>Stage 2</strong> — only if the prefix matches, the Luhn checksum is computed:</p>
+<div class="code-block-wrapper"><button class="copy-btn" aria-label="Copy code"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg></button><div class="code-lang-label">swift</div><pre><code class="hljs language-swift"><span class="hljs-keyword">func</span> <span class="hljs-title function_">passesLuhnCheck</span>(<span class="hljs-keyword">_</span> <span class="hljs-params">digits</span>: <span class="hljs-type">String</span>) -&gt; <span class="hljs-type">Bool</span> {
+    <span class="hljs-keyword">var</span> sum <span class="hljs-operator">=</span> <span class="hljs-number">0</span>
+    <span class="hljs-keyword">for</span> (index, digit) <span class="hljs-keyword">in</span> digits.reversed().enumerated() {
+        <span class="hljs-keyword">if</span> index <span class="hljs-operator">%</span> <span class="hljs-number">2</span> <span class="hljs-operator">==</span> <span class="hljs-number">1</span> {
+            <span class="hljs-keyword">let</span> doubled <span class="hljs-operator">=</span> digit <span class="hljs-operator">*</span> <span class="hljs-number">2</span>
+            sum <span class="hljs-operator">+=</span> doubled <span class="hljs-operator">&gt;</span> <span class="hljs-number">9</span> <span class="hljs-operator">?</span> doubled <span class="hljs-operator">-</span> <span class="hljs-number">9</span> : doubled
+        } <span class="hljs-keyword">else</span> {
+            sum <span class="hljs-operator">+=</span> digit
+        }
+    }
+    <span class="hljs-keyword">return</span> sum <span class="hljs-operator">%</span> <span class="hljs-number">10</span> <span class="hljs-operator">==</span> <span class="hljs-number">0</span>
+}</code></pre></div><p>The two-stage design is deliberate: running Luhn on every digit sequence would waste cycles. The prefix check acts as a cheap filter, and Luhn only runs on plausible candidates.</p>
+<h3 id="layer-4-multi-country-identity-document-detection">Layer 4: Multi-Country Identity Document Detection</h3>
+<p>The final filter in the pipeline covers identity documents across multiple jurisdictions. Each sub-detector uses regex matching followed by country-specific checksum validation:</p>
+<div class="table-wrapper"><table>
+<thead>
+<tr>
+<th>Document / 证件类型</th>
+<th>Format / 格式</th>
+<th>Validation / 验证方式</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>China Mainland 18-digit / 中国大陆 18 位</td>
+<td><code>\d{17}[\dXx]</code></td>
+<td>Weighted checksum / 加权校验码</td>
+</tr>
+<tr>
+<td>China Mainland 15-digit / 中国大陆 15 位</td>
+<td><code>\d{15}</code></td>
+<td>Regex / 正则</td>
+</tr>
+<tr>
+<td>Taiwan ID / 台湾身份证</td>
+<td><code>[A-Z][12]\d{8}</code></td>
+<td>Letter-mapped weighted check / 字母映射加权</td>
+</tr>
+<tr>
+<td>Hong Kong ID / 香港身份证</td>
+<td><code>[A-Z]{1,2}\d{6}\(?[0-9A]\)?</code></td>
+<td>Letter-value weighted / 字母值加权</td>
+</tr>
+<tr>
+<td>US SSN/ITIN / 美国 SSN/ITIN</td>
+<td><code>\d{3}-\d{2}-\d{4}</code></td>
+<td>Area/group/serial rules / 区域规则</td>
+</tr>
+<tr>
+<td>German Tax ID / 德国税号</td>
+<td>11 digits / 11 位</td>
+<td>Modulo 11 / 模 11 校验</td>
+</tr>
+<tr>
+<td>Passport / 护照号</td>
+<td>Multi-format / 多国格式</td>
+<td>Pattern matching / 模式匹配</td>
+</tr>
+</tbody></table></div>
+<p>Every sub-detector goes beyond regex. A string that <em>looks</em> like a China Mainland ID but fails the weighted checksum? It passes through. This prevents false positives from blocking legitimate content like order numbers or timestamps.</p>
+<hr>
+<h2 id="2-aes-gcm-full-chain-encryption">2. AES-GCM Full-Chain Encryption</h2>
+<p>The filtering pipeline handles known sensitive patterns, but ordinary clipboard content — notes, code snippets, personal messages — also needs protection at rest. Deck encrypts the entire data chain with AES-256-GCM, the same authenticated encryption standard used in TLS 1.3.</p>
+<h3 id="key-management">Key Management</h3>
+<p>A 256-bit symmetric key is generated on first use and stored in the macOS Keychain via <code>getOrCreateEncryptionKey()</code>. The key never touches the filesystem. To reduce Keychain access overhead, the key is cached in memory for 60 seconds.</p>
+<h3 id="column-level-database-encryption">Column-Level Database Encryption</h3>
+<p>When Security Mode is enabled (<code>securityModeEnabled</code>), the following database columns are encrypted individually before writing to SQLite:</p>
+<ul>
+<li><code>data</code> — raw clipboard bytes</li>
+<li><code>search_text</code> — searchable text</li>
+<li><code>app_name</code> — source application</li>
+<li><code>custom_title</code> — user-assigned title</li>
+<li><code>embedding</code> — semantic vector</li>
+</ul>
+<div class="code-block-wrapper"><button class="copy-btn" aria-label="Copy code"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg></button><div class="code-lang-label">swift</div><pre><code class="hljs language-swift"><span class="hljs-comment">// Encryption / 加密</span>
+<span class="hljs-keyword">let</span> sealedBox <span class="hljs-operator">=</span> <span class="hljs-keyword">try</span> <span class="hljs-type">AES</span>.<span class="hljs-type">GCM</span>.seal(data, using: key)
+<span class="hljs-keyword">return</span> sealedBox.combined  <span class="hljs-comment">// nonce + ciphertext + tag</span>
+
+<span class="hljs-comment">// Decryption / 解密</span>
+<span class="hljs-keyword">let</span> sealedBox <span class="hljs-operator">=</span> <span class="hljs-keyword">try</span> <span class="hljs-type">AES</span>.<span class="hljs-type">GCM</span>.<span class="hljs-type">SealedBox</span>(combined: encryptedData)
+<span class="hljs-keyword">return</span> <span class="hljs-keyword">try</span> <span class="hljs-type">AES</span>.<span class="hljs-type">GCM</span>.open(sealedBox, using: key)</code></pre></div><p>Each call to <code>AES.GCM.seal</code> generates a fresh random nonce, so encrypting the same plaintext twice produces different ciphertext. The GCM authentication tag ensures any tampering with the ciphertext is detected on decryption.</p>
+<h3 id="blob-file-encryption">Blob File Encryption</h3>
+<p>Clipboard items larger than 512 KB (<code>largeBlobThreshold</code>) are stored as standalone files rather than inline in the database. In Security Mode, these blob files are also AES-GCM encrypted before being written to disk.</p>
+<h3 id="lan-sharing-encryption">LAN Sharing Encryption</h3>
+<p>When Deck syncs clipboard content between devices via MultipeerConnectivity, the shared data is encrypted with a session key negotiated after TOTP verification, using the same CryptoKit <code>AES.GCM</code> primitives as the rest of the encryption chain.</p>
+<h3 id="performance-cost">Performance Cost</h3>
+<p>AES-GCM on Apple Silicon is hardware-accelerated, so the per-item encryption overhead is negligible for typical clipboard entries (text, small images). The main cost shows up elsewhere: encrypted columns break SQLite FTS5 and vector indexes, forcing search to fall back to in-memory decryption-then-match (covered in Section 6). The 60-second in-memory key cache and the 300-entry <code>searchTextCache</code> exist specifically to keep this fallback path responsive.</p>
+<hr>
+<h2 id="3-touch-id-biometric-authentication">3. Touch ID Biometric Authentication</h2>
+<p>Encryption covers data at rest and in transit, but it doesn&#39;t help if someone walks up to an unlocked Mac and opens Deck directly. Biometric authentication closes that gap with a physical identity check.</p>
+<p>Deck uses the <code>LocalAuthentication</code> framework with a two-tier policy:</p>
+<ol>
+<li><strong>Primary / 首选</strong>：<code>.deviceOwnerAuthenticationWithBiometrics</code> — Touch ID, Face ID, or Optic ID</li>
+<li>**Fallback</li>
+</ol>
+<p>Two timeout modes are available:</p>
+<ul>
+<li>**Auto-lock</li>
+<li>**Every-time</li>
+</ul>
+<hr>
+<h2 id="4-zero-width-character-steganography">4. Zero-Width Character Steganography</h2>
+<p>The layers above protect data inside Deck itself. Steganography extends that protection outward — it lets users hide messages inside ordinary-looking text before sharing, so the content stays concealed even if the transmission channel is compromised.</p>
+<p>Zero-width characters are Unicode code points that occupy no visible space. Deck uses four of them to encode data at 2 bits per character:</p>
+<div class="table-wrapper"><table>
+<thead>
+<tr>
+<th>Character / 字符</th>
+<th>Code Point / 码位</th>
+<th>Bits / 位值</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>ZWSP (Zero-Width Space / 零宽空格)</td>
+<td>U+200B</td>
+<td>00</td>
+</tr>
+<tr>
+<td>ZWNJ (Zero-Width Non-Joiner / 零宽非连接符)</td>
+<td>U+200C</td>
+<td>01</td>
+</tr>
+<tr>
+<td>ZWJ (Zero-Width Joiner / 零宽连接符)</td>
+<td>U+200D</td>
+<td>10</td>
+</tr>
+<tr>
+<td>BOM (Byte Order Mark / 字节序标记)</td>
+<td>U+FEFF</td>
+<td>11</td>
+</tr>
+</tbody></table></div>
+<p>The encoding pipeline:</p>
+<div class="code-block-wrapper"><button class="copy-btn" aria-label="Copy code"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg></button><pre><code class="hljs">Plaintext → AES-GCM Encrypt → Map Each 2-bit Pair to Zero-Width Char
+→ Prepend Magic Header &quot;DECKSTG1&quot; → Embed into Cover Text
+
+明文 → AES-GCM 加密 → 每 2 bit 映射为零宽字符
+→ 添加魔数头部 &quot;DECKSTG1&quot; → 嵌入载体文本</code></pre></div><p>The result is a piece of text that looks completely normal — &quot;Meeting moved to 3pm&quot; — but contains an invisible, encrypted payload that only Deck can extract.</p>
+<hr>
+<h2 id="5-image-lsb-steganography">5. Image LSB Steganography</h2>
+<p>For richer payloads or when text isn&#39;t the right carrier, Deck supports Least Significant Bit (LSB) steganography in images.</p>
+<p>The algorithm modifies the lowest bit of each RGB channel in every non-transparent pixel, yielding 3 bits of storage per pixel. A 1920×1080 image with no transparency can carry roughly 760 KB of hidden data — more than enough for most messages.</p>
+<p>The pipeline mirrors the zero-width approach:</p>
+<ol>
+<li>Plaintext → AES-GCM encryption</li>
+<li>Prepend <code>DECKSTG1</code> magic header (14 bytes, including payload length)</li>
+<li>Write encrypted bits into the LSBs of pixel RGB channels</li>
+<li>Re-encode the image via <code>CGContext</code></li>
+</ol>
+<p>Transparent pixels (alpha &lt; 1) are skipped — modifying them would create visible artifacts. The carrier image limit is approximately 25 MB.</p>
+<h3 id="steganography-key-management">Steganography Key Management</h3>
+<p>Steganographic encryption uses a dedicated key, derived from the master key via HKDF-SHA256 (<code>SteganographyKeyStore.swift</code>). This separation ensures that compromising one key doesn&#39;t compromise the other.</p>
+<hr>
+<h2 id="6-the-cost-of-security-search-degradation-in-security-mode">6. The Cost of Security: Search Degradation in Security Mode</h2>
+<p>Security always has trade-offs. When Security Mode encrypts database columns, several search capabilities lose access to plaintext and must degrade gracefully:</p>
+<div class="table-wrapper"><table>
+<thead>
+<tr>
+<th>Search Layer / 搜索层</th>
+<th>Normal Mode / 正常模式</th>
+<th>Security Mode / 安全模式</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>FTS5 Full-Text Search / FTS5 全文检索</td>
+<td>Available / 可用</td>
+<td>Disabled — <code>search_text</code> encrypted / 索引失效</td>
+</tr>
+<tr>
+<td>sqlite-vec Vector Search / sqlite-vec 向量检索</td>
+<td>Available / 可用</td>
+<td>Disabled — <code>vecIndexEnabled = false</code></td>
+</tr>
+<tr>
+<td>Semantic Search / 语义搜索</td>
+<td>NLEmbedding</td>
+<td>Degraded to plain-text matching / 降级为纯文本匹配</td>
+</tr>
+<tr>
+<td>Fuzzy Search / 模糊搜索</td>
+<td>FuseSearch</td>
+<td>Available — in-memory after decryption / 内存解密后搜索</td>
+</tr>
+<tr>
+<td>SQL LIKE</td>
+<td>Available / 可用</td>
+<td>Disabled — columns encrypted / 列已加密</td>
+</tr>
+<tr>
+<td>In-Memory Search / 内存搜索</td>
+<td>Fallback / 备用</td>
+<td>Primary — <code>searchWithLike</code> / 主力</td>
+</tr>
+</tbody></table></div>
+<p>In Security Mode, search falls back to an in-memory scan: items are decrypted on-the-fly and matched in memory. To keep this practical, the scan is capped at <code>max(5000, limit × 200)</code> items (hard ceiling: 20,000), and a <code>searchTextCache</code> holds the 300 most recently decrypted texts to avoid redundant decryption.</p>
+<p>It&#39;s not as fast as FTS5, but it preserves functionality without ever writing plaintext search indexes to disk.</p>
+<hr>
+<h2 id="7-how-the-layers-fit-together">7. How the Layers Fit Together</h2>
+<p>Each layer addresses a different threat surface. Filtering keeps sensitive data out of the system; encryption protects what does get stored; biometrics prevents unauthorized physical access; steganography protects data after it leaves Deck. None of them is sufficient on its own — the value is in the overlap.</p>
+<div class="blog-mermaid" data-mermaid="graph%20LR%0A%20%20%20%20A%5BClipboard%20Input%3Cbr%3E%E5%89%AA%E8%B4%B4%E6%9D%BF%E8%BE%93%E5%85%A5%5D%20--%3E%20B%5BSensitive%20Content%3Cbr%3EFiltering%3Cbr%3E%E6%95%8F%E6%84%9F%E5%86%85%E5%AE%B9%E8%BF%87%E6%BB%A4%5D%0A%20%20%20%20B%20--%3E%20C%5BAES-GCM%3Cbr%3EEncryption%3Cbr%3EAES-GCM%20%E5%8A%A0%E5%AF%86%5D%0A%20%20%20%20C%20--%3E%20D%5BKeychain%20Key%3Cbr%3EManagement%3Cbr%3E%E9%92%A5%E5%8C%99%E4%B8%B2%E5%AF%86%E9%92%A5%E7%AE%A1%E7%90%86%5D%0A%20%20%20%20C%20--%3E%20E%5BBlob%20File%3Cbr%3EEncryption%3Cbr%3EBlob%20%E6%96%87%E4%BB%B6%E5%8A%A0%E5%AF%86%5D%0A%20%20%20%20C%20--%3E%20F%5BLAN%20Sharing%3Cbr%3EEncryption%3Cbr%3E%E5%B1%80%E5%9F%9F%E7%BD%91%E5%85%B1%E4%BA%AB%E5%8A%A0%E5%AF%86%5D%0A%20%20%20%20A%20--%3E%20G%5BTouch%20ID%3Cbr%3EBiometrics%3Cbr%3E%E7%94%9F%E7%89%A9%E8%AF%86%E5%88%AB%5D%0A%20%20%20%20A%20--%3E%20H%5BSteganography%3Cbr%3E%E9%9A%90%E5%86%99%E6%9C%AF%5D%0A%20%20%20%20H%20--%3E%20H1%5BZero-Width%3Cbr%3EChars%3Cbr%3E%E9%9B%B6%E5%AE%BD%E5%AD%97%E7%AC%A6%5D%0A%20%20%20%20H%20--%3E%20H2%5BImage%20LSB%3Cbr%3E%E5%9B%BE%E7%89%87%20LSB%5D"><pre class="mermaid-fallback"><code>graph LR
+    A[Clipboard Input<br>剪贴板输入] --> B[Sensitive Content<br>Filtering<br>敏感内容过滤]
+    B --> C[AES-GCM<br>Encryption<br>AES-GCM 加密]
+    C --> D[Keychain Key<br>Management<br>钥匙串密钥管理]
+    C --> E[Blob File<br>Encryption<br>Blob 文件加密]
+    C --> F[LAN Sharing<br>Encryption<br>局域网共享加密]
+    A --> G[Touch ID<br>Biometrics<br>生物识别]
+    A --> H[Steganography<br>隐写术]
+    H --> H1[Zero-Width<br>Chars<br>零宽字符]
+    H --> H2[Image LSB<br>图片 LSB]</code></pre></div><ul>
+<li><strong>Filtering</strong> intercepts passwords, card numbers, and ID numbers at the entry point, keeping them out of storage entirely.</li>
+<li><strong>Encryption</strong> covers database columns, on-disk blob files, and LAN transfers — protecting all stored and in-transit data.</li>
+<li><strong>Biometrics</strong> requires Touch ID or a password before anyone can view clipboard history on an unlocked Mac.</li>
+<li><strong>Steganography</strong> adds an invisible encryption layer for users sharing content through untrusted channels.</li>
+<li>When Security Mode is on, <strong>search automatically degrades</strong> to an in-memory scan, avoiding plaintext indexes on disk.</li>
+</ul>
+<p>Deck reads everything the user copies. The architecture above makes sure that visibility doesn&#39;t become a liability — each layer reduces a different category of risk, and together they cover the gaps that any single mechanism would leave open.</p>
+0:{"buildId":"pm3fbawIzcyihp8SVMInv","rsc":["$","$1","c",{"children":[[["$","script",null,{"type":"application/ld+json","dangerouslySetInnerHTML":{"__html":"{\"@context\":\"https://schema.org\",\"@type\":\"BlogPosting\",\"headline\":\"Deck's Privacy Architecture: How a Clipboard Manager Protects What It Reads\",\"description\":\"Defense in depth — sensitive content filtering, AES-GCM encryption, Touch ID biometrics, and zero-width character steganography.\",\"url\":\"https://deckclip.app/blog/privacy-security\",\"datePublished\":\"2026-03-06T00:00:00+00:00\",\"dateModified\":\"2026-03-06T00:00:00+00:00\",\"author\":{\"@type\":\"Organization\",\"name\":\"Deck\",\"url\":\"https://deckclip.app\"},\"publisher\":{\"@type\":\"Organization\",\"name\":\"Deck\",\"url\":\"https://deckclip.app\",\"logo\":{\"@type\":\"ImageObject\",\"url\":\"https://deckclip.app/Deck.webp\"}},\"mainEntityOfPage\":{\"@type\":\"WebPage\",\"@id\":\"https://deckclip.app/blog/privacy-security\"},\"image\":\"https://deckclip.app/Deck.webp\",\"keywords\":\"Privacy, Security, Encryption\",\"timeRequired\":\"PT9M\",\"inLanguage\":\"en\",\"isAccessibleForFree\":true}"}}],["$","script",null,{"type":"application/ld+json","dangerouslySetInnerHTML":{"__html":"{\"@context\":\"https://schema.org\",\"@type\":\"BreadcrumbList\",\"itemListElement\":[{\"@type\":\"ListItem\",\"position\":1,\"name\":\"Home\",\"item\":\"https://deckclip.app\"},{\"@type\":\"ListItem\",\"position\":2,\"name\":\"Blog\",\"item\":\"https://deckclip.app/blog\"},{\"@type\":\"ListItem\",\"position\":3,\"name\":\"Deck's Privacy Architecture: How a Clipboard Manager Protects What It Reads\",\"item\":\"https://deckclip.app/blog/privacy-security\"}]}"}}],["$","$L2",null,{"post":{"slug":"privacy-security","title":"Deck's Privacy Architecture: How a Clipboard Manager Protects What It Reads","date":"2026-03-06","summary":"Defense in depth — sensitive content filtering, AES-GCM encryption, Touch ID biometrics, and zero-width character steganography.","tags":["Privacy","Security","Encryption"],"html":"$3","readingTime":9},"toc":[{"depth":3,"id":"threat-model","text":"Threat Model"},{"depth":2,"id":"1-the-sensitive-content-filtering-pipeline","text":"1. The Sensitive Content Filtering Pipeline"},{"depth":3,"id":"layer-1-system-password-type-markers","text":"Layer 1: System Password Type Markers"},{"depth":3,"id":"layer-2-window-title-aware-auto-pause","text":"Layer 2: Window Title-Aware Auto-Pause"},{"depth":3,"id":"layer-3-bank-card-detection-via-luhn-algorithm","text":"Layer 3: Bank Card Detection via Luhn Algorithm"},{"depth":3,"id":"layer-4-multi-country-identity-document-detection","text":"Layer 4: Multi-Country Identity Document Detection"},{"depth":2,"id":"2-aes-gcm-full-chain-encryption","text":"2. AES-GCM Full-Chain Encryption"},{"depth":3,"id":"key-management","text":"Key Management"},{"depth":3,"id":"column-level-database-encryption","text":"Column-Level Database Encryption"},{"depth":3,"id":"blob-file-encryption","text":"Blob File Encryption"},{"depth":3,"id":"lan-sharing-encryption","text":"LAN Sharing Encryption"},{"depth":3,"id":"performance-cost","text":"Performance Cost"},{"depth":2,"id":"3-touch-id-biometric-authentication","text":"3. Touch ID Biometric Authentication"},{"depth":2,"id":"4-zero-width-character-steganography","text":"4. Zero-Width Character Steganography"},{"depth":2,"id":"5-image-lsb-steganography","text":"5. Image LSB Steganography"},{"depth":3,"id":"steganography-key-management","text":"Steganography Key Management"},{"depth":2,"id":"6-the-cost-of-security-search-degradation-in-security-mode","text":"6. The Cost of Security: Search Degradation in Security Mode"},{"depth":2,"id":"7-how-the-layers-fit-together","text":"7. How the Layers Fit Together"}]}]],["$L4","$L5","$L6"],"$L7"]}],"loading":null,"isPartial":false}
+4:["$","link","0",{"rel":"stylesheet","href":"/_next/static/chunks/afdd98b8a478f0f3.css","precedence":"next"}]
+5:["$","script","script-0",{"src":"/_next/static/chunks/63d601ccd18bb55a.js","async":true}]
+6:["$","script","script-1",{"src":"/_next/static/chunks/47413eb9754e363e.js","async":true}]
+7:["$","$L8",null,{"children":["$","$9",null,{"name":"Next.MetadataOutlet","children":"$@a"}]}]
+a:null

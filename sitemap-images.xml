@@ -1,0 +1,374 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset
+  xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
+  xmlns:image="http://www.google.com/schemas/sitemap-image/1.1"
+>
+  <url>
+    <loc>https://deckclip.app/</loc>
+    <image:image>
+      <image:loc>https://deckclip.app/Deck.jpeg</image:loc>
+      <image:title>Deck Product Preview</image:title>
+      <image:caption>Deck macOS clipboard manager product preview</image:caption>
+    </image:image>
+  </url>
+  <url>
+    <loc>https://deckclip.app/zh-cn</loc>
+    <image:image>
+      <image:loc>https://deckclip.app/Deck.jpeg</image:loc>
+      <image:title>Deck Product Preview (ZH)</image:title>
+      <image:caption>Deck macOS clipboard manager product preview for Chinese page</image:caption>
+    </image:image>
+  </url>
+  <url>
+    <loc>https://deckclip.app/</loc>
+    <image:image>
+      <image:loc>https://deckclip.app/Deck.webp</image:loc>
+      <image:title>Deck OG Image</image:title>
+      <image:caption>Primary Open Graph image for Deck clipboard manager</image:caption>
+    </image:image>
+  </url>
+  <url>
+    <loc>https://deckclip.app/zh-cn</loc>
+    <image:image>
+      <image:loc>https://deckclip.app/Deck.webp</image:loc>
+      <image:title>Deck OG Image (ZH)</image:title>
+      <image:caption>Deck 官网中文页面使用的主 Open Graph 图片</image:caption>
+    </image:image>
+  </url>
+  <url>
+    <loc>https://deckclip.app/</loc>
+    <image:image>
+      <image:loc>https://deckclip.app/light-desktop.webp</image:loc>
+      <image:title>Deck Hero Preview Light Desktop</image:title>
+      <image:caption>Light theme desktop hero preview for Deck clipboard manager</image:caption>
+    </image:image>
+  </url>
+  <url>
+    <loc>https://deckclip.app/</loc>
+    <image:image>
+      <image:loc>https://deckclip.app/dark-desktop.webp</image:loc>
+      <image:title>Deck Hero Preview Dark Desktop</image:title>
+      <image:caption>Dark theme desktop hero preview for Deck clipboard manager</image:caption>
+    </image:image>
+  </url>
+  <url>
+    <loc>https://deckclip.app/</loc>
+    <image:image>
+      <image:loc>https://deckclip.app/light-mobile.webp</image:loc>
+      <image:title>Deck Hero Preview Light Mobile</image:title>
+      <image:caption>Light theme mobile hero preview for Deck clipboard manager</image:caption>
+    </image:image>
+  </url>
+  <url>
+    <loc>https://deckclip.app/</loc>
+    <image:image>
+      <image:loc>https://deckclip.app/dark-mobile.webp</image:loc>
+      <image:title>Deck Hero Preview Dark Mobile</image:title>
+      <image:caption>Dark theme mobile hero preview for Deck clipboard manager</image:caption>
+    </image:image>
+  </url>
+  <url>
+    <loc>https://deckclip.app/</loc>
+    <image:image>
+      <image:loc>https://deckclip.app/ai-search-history.webp</image:loc>
+      <image:title>Deck AI Search History Preview</image:title>
+      <image:caption>Deck AI search history interface preview on the homepage</image:caption>
+    </image:image>
+  </url>
+  <url>
+    <loc>https://deckclip.app/zh-cn</loc>
+    <image:image>
+      <image:loc>https://deckclip.app/light-desktop.webp</image:loc>
+      <image:title>Deck Hero Preview Light Desktop (ZH)</image:title>
+      <image:caption>中文首页使用的 Deck 浅色桌面端首屏预览图</image:caption>
+    </image:image>
+  </url>
+  <url>
+    <loc>https://deckclip.app/zh-cn</loc>
+    <image:image>
+      <image:loc>https://deckclip.app/dark-desktop.webp</image:loc>
+      <image:title>Deck Hero Preview Dark Desktop (ZH)</image:title>
+      <image:caption>中文首页使用的 Deck 深色桌面端首屏预览图</image:caption>
+    </image:image>
+  </url>
+  <url>
+    <loc>https://deckclip.app/zh-cn</loc>
+    <image:image>
+      <image:loc>https://deckclip.app/light-mobile.webp</image:loc>
+      <image:title>Deck Hero Preview Light Mobile (ZH)</image:title>
+      <image:caption>中文首页使用的 Deck 浅色移动端首屏预览图</image:caption>
+    </image:image>
+  </url>
+  <url>
+    <loc>https://deckclip.app/zh-cn</loc>
+    <image:image>
+      <image:loc>https://deckclip.app/dark-mobile.webp</image:loc>
+      <image:title>Deck Hero Preview Dark Mobile (ZH)</image:title>
+      <image:caption>中文首页使用的 Deck 深色移动端首屏预览图</image:caption>
+    </image:image>
+  </url>
+  <url>
+    <loc>https://deckclip.app/zh-cn</loc>
+    <image:image>
+      <image:loc>https://deckclip.app/ai-search-history.webp</image:loc>
+      <image:title>Deck AI Search History Preview (ZH)</image:title>
+      <image:caption>中文首页使用的 Deck AI 搜索历史界面预览图</image:caption>
+    </image:image>
+  </url>
+  <url>
+    <loc>https://deckclip.app/</loc>
+    <image:image>
+      <image:loc>https://deckclip.app/deck-macOS-Default-96x96@1x.png</image:loc>
+      <image:title>Deck Icon Light</image:title>
+      <image:caption>Deck app icon for light background</image:caption>
+    </image:image>
+  </url>
+  <url>
+    <loc>https://deckclip.app/</loc>
+    <image:image>
+      <image:loc>https://deckclip.app/deck-macOS-Dark-96x96@1x.png</image:loc>
+      <image:title>Deck Icon Dark</image:title>
+      <image:caption>Deck app icon for dark background</image:caption>
+    </image:image>
+  </url>
+  <url>
+    <loc>https://deckclip.app/download</loc>
+    <image:image>
+      <image:loc>https://deckclip.app/deck-macOS-Default-192x192@1x.png</image:loc>
+      <image:title>Deck Download Icon</image:title>
+      <image:caption>Deck macOS app icon on download page</image:caption>
+    </image:image>
+  </url>
+  <url>
+    <loc>https://deckclip.app/zh-cn/download</loc>
+    <image:image>
+      <image:loc>https://deckclip.app/deck-macOS-Default-192x192@1x.png</image:loc>
+      <image:title>Deck Download Icon (ZH)</image:title>
+      <image:caption>Deck macOS app icon on Chinese download page</image:caption>
+    </image:image>
+  </url>
+  <url>
+    <loc>https://deckclip.app/download</loc>
+    <image:image>
+      <image:loc>https://deckclip.app/deck-macOS-Dark-192x192@1x.png</image:loc>
+      <image:title>Deck Download Icon Dark</image:title>
+      <image:caption>Deck macOS app icon for dark mode on download page</image:caption>
+    </image:image>
+  </url>
+  <url>
+    <loc>https://deckclip.app/zh-cn/download</loc>
+    <image:image>
+      <image:loc>https://deckclip.app/deck-macOS-Dark-192x192@1x.png</image:loc>
+      <image:title>Deck Download Icon Dark (ZH)</image:title>
+      <image:caption>Deck macOS app icon for dark mode on Chinese download page</image:caption>
+    </image:image>
+  </url>
+  <url>
+    <loc>https://deckclip.app/showcase</loc>
+    <image:image>
+      <image:loc>https://deckclip.app/DeckScriptPlugin.webp</image:loc>
+      <image:title>Deck Script Plugin Showcase</image:title>
+      <image:caption>Deck Script Plugin demo video poster</image:caption>
+    </image:image>
+  </url>
+  <url>
+    <loc>https://deckclip.app/showcase</loc>
+    <image:image>
+      <image:loc>https://deckclip.app/DeckAIMemory.webp</image:loc>
+      <image:title>Deck AI Memory Showcase</image:title>
+      <image:caption>Deck AI Memory demo video poster</image:caption>
+    </image:image>
+  </url>
+  <url>
+    <loc>https://deckclip.app/showcase</loc>
+    <image:image>
+      <image:loc>https://deckclip.app/DeckAI.webp</image:loc>
+      <image:title>Deck AI Showcase</image:title>
+      <image:caption>Deck AI demo video poster</image:caption>
+    </image:image>
+  </url>
+  <url>
+    <loc>https://deckclip.app/zh-cn/showcase</loc>
+    <image:image>
+      <image:loc>https://deckclip.app/DeckScriptPlugin.webp</image:loc>
+      <image:title>Deck Script Plugin Showcase (ZH)</image:title>
+      <image:caption>中文演示页的 Deck Script Plugin 视频封面</image:caption>
+    </image:image>
+  </url>
+  <url>
+    <loc>https://deckclip.app/zh-cn/showcase</loc>
+    <image:image>
+      <image:loc>https://deckclip.app/DeckAIMemory.webp</image:loc>
+      <image:title>Deck AI Memory Showcase (ZH)</image:title>
+      <image:caption>中文演示页的 Deck AI Memory 视频封面</image:caption>
+    </image:image>
+  </url>
+  <url>
+    <loc>https://deckclip.app/zh-cn/showcase</loc>
+    <image:image>
+      <image:loc>https://deckclip.app/DeckAI.webp</image:loc>
+      <image:title>Deck AI Showcase (ZH)</image:title>
+      <image:caption>中文演示页的 Deck AI 视频封面</image:caption>
+    </image:image>
+  </url>
+  <url>
+    <loc>https://deckclip.app/features</loc>
+    <image:image>
+      <image:loc>https://deckclip.app/features/search/semantic-search.webp</image:loc>
+      <image:title>Deck Features Semantic Search Module</image:title>
+      <image:caption>Semantic search visual used on the Deck features page</image:caption>
+    </image:image>
+  </url>
+  <url>
+    <loc>https://deckclip.app/features</loc>
+    <image:image>
+      <image:loc>https://deckclip.app/features/ai/ai-chat.webp</image:loc>
+      <image:title>Deck Features AI Assistant Module</image:title>
+      <image:caption>AI assistant visual used on the Deck features page</image:caption>
+    </image:image>
+  </url>
+  <url>
+    <loc>https://deckclip.app/features</loc>
+    <image:image>
+      <image:loc>https://deckclip.app/features/workflow/paste-queue.webp</image:loc>
+      <image:title>Deck Features Workflow Module</image:title>
+      <image:caption>Paste queue workflow visual used on the Deck features page</image:caption>
+    </image:image>
+  </url>
+  <url>
+    <loc>https://deckclip.app/features</loc>
+    <image:image>
+      <image:loc>https://deckclip.app/features/privacy/touchid-lock.webp</image:loc>
+      <image:title>Deck Features Privacy Module</image:title>
+      <image:caption>Touch ID privacy visual used on the Deck features page</image:caption>
+    </image:image>
+  </url>
+  <url>
+    <loc>https://deckclip.app/features</loc>
+    <image:image>
+      <image:loc>https://deckclip.app/features/sharing/lan-sharing.webp</image:loc>
+      <image:title>Deck Features Sharing Module</image:title>
+      <image:caption>Local network sharing visual used on the Deck features page</image:caption>
+    </image:image>
+  </url>
+  <url>
+    <loc>https://deckclip.app/zh-cn/features</loc>
+    <image:image>
+      <image:loc>https://deckclip.app/features/search/semantic-search.webp</image:loc>
+      <image:title>Deck 功能页语义搜索模块</image:title>
+      <image:caption>Deck 中文功能页使用的语义搜索视觉图</image:caption>
+    </image:image>
+  </url>
+  <url>
+    <loc>https://deckclip.app/zh-cn/features</loc>
+    <image:image>
+      <image:loc>https://deckclip.app/features/ai/ai-chat.webp</image:loc>
+      <image:title>Deck 功能页 AI 助手模块</image:title>
+      <image:caption>Deck 中文功能页使用的 AI 助手视觉图</image:caption>
+    </image:image>
+  </url>
+  <url>
+    <loc>https://deckclip.app/zh-cn/features</loc>
+    <image:image>
+      <image:loc>https://deckclip.app/features/workflow/paste-queue.webp</image:loc>
+      <image:title>Deck 功能页工作流模块</image:title>
+      <image:caption>Deck 中文功能页使用的粘贴队列视觉图</image:caption>
+    </image:image>
+  </url>
+  <url>
+    <loc>https://deckclip.app/zh-cn/features</loc>
+    <image:image>
+      <image:loc>https://deckclip.app/features/privacy/touchid-lock.webp</image:loc>
+      <image:title>Deck 功能页隐私模块</image:title>
+      <image:caption>Deck 中文功能页使用的隐私保护视觉图</image:caption>
+    </image:image>
+  </url>
+  <url>
+    <loc>https://deckclip.app/zh-cn/features</loc>
+    <image:image>
+      <image:loc>https://deckclip.app/features/sharing/lan-sharing.webp</image:loc>
+      <image:title>Deck 功能页共享模块</image:title>
+      <image:caption>Deck 中文功能页使用的局域网共享视觉图</image:caption>
+    </image:image>
+  </url>
+  <url>
+    <loc>https://deckclip.app/features/semantic-search</loc>
+    <image:image>
+      <image:loc>https://deckclip.app/features/search/semantic-search.webp</image:loc>
+      <image:title>Deck Semantic Search Feature</image:title>
+      <image:caption>Semantic search preview image for the Deck feature page</image:caption>
+    </image:image>
+  </url>
+  <url>
+    <loc>https://deckclip.app/features/ai-clipboard-assistant</loc>
+    <image:image>
+      <image:loc>https://deckclip.app/features/ai/ai-chat.webp</image:loc>
+      <image:title>Deck AI Clipboard Assistant Feature</image:title>
+      <image:caption>AI clipboard assistant preview image for the Deck feature page</image:caption>
+    </image:image>
+  </url>
+  <url>
+    <loc>https://deckclip.app/features/queue-mode</loc>
+    <image:image>
+      <image:loc>https://deckclip.app/features/workflow/paste-queue.webp</image:loc>
+      <image:title>Deck Queue Mode Feature</image:title>
+      <image:caption>Queue mode preview image for the Deck feature page</image:caption>
+    </image:image>
+  </url>
+  <url>
+    <loc>https://deckclip.app/features/touch-id-protection</loc>
+    <image:image>
+      <image:loc>https://deckclip.app/features/privacy/touchid-lock.webp</image:loc>
+      <image:title>Deck Touch ID Protection Feature</image:title>
+      <image:caption>Touch ID protection preview image for the Deck feature page</image:caption>
+    </image:image>
+  </url>
+  <url>
+    <loc>https://deckclip.app/features/local-network-sharing</loc>
+    <image:image>
+      <image:loc>https://deckclip.app/features/sharing/lan-sharing.webp</image:loc>
+      <image:title>Deck Local Network Sharing Feature</image:title>
+      <image:caption>Local network sharing preview image for the Deck feature page</image:caption>
+    </image:image>
+  </url>
+  <url>
+    <loc>https://deckclip.app/zh-cn/features/semantic-search</loc>
+    <image:image>
+      <image:loc>https://deckclip.app/features/search/semantic-search.webp</image:loc>
+      <image:title>Deck 语义搜索功能页</image:title>
+      <image:caption>Deck 中文语义搜索功能页使用的预览图</image:caption>
+    </image:image>
+  </url>
+  <url>
+    <loc>https://deckclip.app/zh-cn/features/ai-clipboard-assistant</loc>
+    <image:image>
+      <image:loc>https://deckclip.app/features/ai/ai-chat.webp</image:loc>
+      <image:title>Deck AI 助手功能页</image:title>
+      <image:caption>Deck 中文 AI 助手功能页使用的预览图</image:caption>
+    </image:image>
+  </url>
+  <url>
+    <loc>https://deckclip.app/zh-cn/features/queue-mode</loc>
+    <image:image>
+      <image:loc>https://deckclip.app/features/workflow/paste-queue.webp</image:loc>
+      <image:title>Deck 队列模式功能页</image:title>
+      <image:caption>Deck 中文队列模式功能页使用的预览图</image:caption>
+    </image:image>
+  </url>
+  <url>
+    <loc>https://deckclip.app/zh-cn/features/touch-id-protection</loc>
+    <image:image>
+      <image:loc>https://deckclip.app/features/privacy/touchid-lock.webp</image:loc>
+      <image:title>Deck Touch ID 保护功能页</image:title>
+      <image:caption>Deck 中文隐私保护功能页使用的预览图</image:caption>
+    </image:image>
+  </url>
+  <url>
+    <loc>https://deckclip.app/zh-cn/features/local-network-sharing</loc>
+    <image:image>
+      <image:loc>https://deckclip.app/features/sharing/lan-sharing.webp</image:loc>
+      <image:title>Deck 局域网共享功能页</image:title>
+      <image:caption>Deck 中文局域网共享功能页使用的预览图</image:caption>
+    </image:image>
+  </url>
+</urlset>
